@@ -1,0 +1,19 @@
+{
+	"name": "aside",
+	"version": "0.1.0",
+	"description": "Ask side questions about your pi conversation in a pane next to it",
+	"private": true,
+	"type": "module",
+	"keywords": ["pi-package"],
+	"pi": {
+		"extensions": ["./index.ts"]
+	},
+	"scripts": {
+		"check": "sh scripts/check.sh"
+	},
+	"peerDependencies": {
+		"@earendil-works/pi-ai": "*",
+		"@earendil-works/pi-coding-agent": "*",
+		"@earendil-works/pi-tui": "*"
+	}
+}
