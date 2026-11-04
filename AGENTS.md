@@ -1,7 +1,7 @@
-# aside (pi extension)
+# aside-pane (pi extension)
 
-Loaded through the symlink `~/.pi/agent/extensions/aside` -> `~/gitcm/dchang/aside`; `package.json`
-points pi at `index.ts`.
+Published to npm as `aside-pane`. Loaded locally through the symlink `~/.pi/agent/extensions/aside` ->
+`~/gitcm/aside`; `package.json` points pi at `index.ts`.
 
 ## Rules
 

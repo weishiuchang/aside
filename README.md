@@ -1,11 +1,25 @@
-# aside
+# aside-pane
 
-Ask a side question about part of your [pi](https://pi.dev) conversation in a pane next to it,
-without adding it to the conversation.
+Hold a side conversation about part of your [pi](https://pi.dev) conversation, in a pane next to
+it, without adding it to the conversation.
 
 Good for small things in a long session: "what did you mean by that?", "summarize those three
 turns", "is that file really like that?", "fix that typo while the agent carries on". You decide
 whether anything comes back.
+
+## Not a `/btw`
+
+A `/btw` is built for one quick question: ask, read the answer, move on. aside-pane is built for a
+side conversation you stay in for a while:
+
+- **Threaded.** Keep following up; the aside remembers the whole discussion.
+- **About a specific part.** Point it at one turn or a range of turns, and change that as you go.
+- **Stackable.** Open an aside about an aside, each in its own pane, sharing the screen with the
+  main conversation instead of covering it.
+- **You decide what comes back.** Throw the discussion away, or send a summary or the whole
+  thing to the conversation it came from.
+
+A one-off question works too: ask it, then close the aside with `ctrl+d`.
 
 ## Quick start
 
@@ -127,13 +141,12 @@ whether anything comes back.
 
 ## Install
 
-Clone it into pi's extensions folder, then start pi or run `/reload`. You should see `aside` under
-`[Extensions]`. pi picks up edits there after `/reload`.
-
 ```bash
-git clone ssh://git@gitlab.cfdata.org/dchang/aside.git ~/.pi/agent/extensions/aside
+pi install npm:aside-pane
 ```
 
-To try it for one session only, clone it anywhere else and run `pi --extension <that folder>`.
+Then start pi, or run `/reload` if it's already running. `pi list` shows it once installed.
 
-To uninstall, `rm -rf ~/.pi/agent/extensions/aside`.
+To try it for one session without installing, run `pi -e npm:aside-pane`.
+
+To uninstall, `pi remove npm:aside-pane`.

@@ -1,8 +1,12 @@
 {
-	"name": "aside",
+	"name": "aside-pane",
 	"version": "0.1.0",
-	"description": "Ask side questions about your pi conversation in a pane next to it",
-	"private": true,
+	"description": "Threaded side conversations about your pi session, in stackable panes beside it",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/weishiuchang/aside.git"
+	},
 	"type": "module",
 	"keywords": ["pi-package"],
 	"pi": {
