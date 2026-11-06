@@ -109,13 +109,18 @@ export interface AsideLevel {
 	/** What this level and nested asides closed on it changed, not yet sent to the level below. */
 	changes: Change[];
 	/**
-	 * The answer, the check of its commands, or the summary in flight. `unsettled` is what it may have
-	 * changed that is not in `changes` yet, for when the aside closes before it ends.
+	 * The answer or the check of its commands in flight. `unsettled` is what it may have changed that
+	 * is not in `changes` yet, for when the aside closes before it ends.
 	 */
-	task?: { kind: "answer" | "check" | "summary"; controller: AbortController; unsettled?: () => Change[] };
+	task?: { kind: "answer" | "check"; controller: AbortController; unsettled?: () => Change[] };
+	/**
+	 * Summaries of nested asides closed on this level, still being written; each arrives as an entry
+	 * in the thread. Removed from here when the level closes, so they send nothing.
+	 */
+	incoming: Set<AbortController>;
 	/** The aside closed: work still winding down must not start anything new. */
 	discarded: boolean;
-	/** Every model call this level made (answers and summaries). */
+	/** Every model call this level made, and the summaries of nested asides closed on it. */
 	usage: UsageTotals;
 	/** Status line under the thread. */
 	notice?: string;
@@ -143,6 +148,7 @@ export function createLevel(depth: number, parts: () => Part[], model: Model, th
 		follow: true,
 		pendingNotes: [],
 		changes: [],
+		incoming: new Set(),
 		discarded: false,
 		usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0 },
 	};
@@ -153,10 +159,24 @@ export function levelThinking(level: AsideLevel): ThinkingLevel {
 	return clampThinkingLevel(level.model, level.thinking);
 }
 
-/** Stop whatever the level is doing and release its session. */
+/** Whether the level is answering, checking commands, or waiting for a nested aside's summary. */
+export function isBusy(level: AsideLevel): boolean {
+	return !!level.task || level.incoming.size > 0;
+}
+
+/** Stop everything streaming at the level (pi's interrupt key); stopped summaries still arrive, as whole threads. */
+export function stopStreaming(level: AsideLevel) {
+	level.task?.controller.abort();
+	for (const controller of level.incoming) controller.abort();
+}
+
+/** Stop whatever the level is doing, drop the summaries still coming to it, and release its session. */
 export function discardLevel(level: AsideLevel) {
 	level.discarded = true;
+	const incoming = [...level.incoming];
+	level.incoming.clear();
 	level.task?.controller.abort();
+	for (const controller of incoming) controller.abort();
 	level.session?.then(closeSession).catch(() => {});
 	level.session = undefined;
 }

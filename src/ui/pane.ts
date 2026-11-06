@@ -18,7 +18,7 @@ import {
 import { LIST_MAX_ROWS, MAX_DEPTH, MAX_INPUT_ROWS, OPEN_KEYS, SUMMARY_KEY, THREAD_KEY, THREAD_WINDOW } from "../config.ts";
 import { type Part, rangeLabel, sentDownText } from "../context/parts.ts";
 import { clip, plural } from "../context/text.ts";
-import { type AsideLevel, answerVersion, handoffTitle, type SentDown, selectedRange, syncSelection } from "../level.ts";
+import { type AsideLevel, answerVersion, handoffTitle, isBusy, type SentDown, selectedRange, stopStreaming, syncSelection } from "../level.ts";
 import { anchorRow, lineAnchor } from "./anchor.ts";
 import { QuestionBox } from "./question-box.ts";
 
@@ -121,7 +121,7 @@ export class AsidePane implements Component, Focusable {
 				change: (text) => {
 					level.draft = text;
 				},
-				escape: () => level.task?.controller.abort(),
+				escape: () => stopStreaming(level),
 				// It closes at once, stopping whatever is streaming: the user no longer wants its result.
 				exit: () => actions.close(),
 				toggleExpanded: () => actions.toggleExpanded(),
@@ -199,11 +199,11 @@ export class AsidePane implements Component, Focusable {
 		const level = this.level;
 		if (OPEN_KEYS.some((k) => matchesKey(data, k))) return this.actions.openNested();
 		if (matchesKey(data, SUMMARY_KEY)) {
-			if (!level.task) this.actions.summarize();
+			if (!isBusy(level)) this.actions.summarize();
 			return;
 		}
 		if (matchesKey(data, THREAD_KEY)) {
-			if (!level.task) this.actions.sendThread();
+			if (!isBusy(level)) this.actions.sendThread();
 			return;
 		}
 		if (matchesKey(data, "shift+up")) return this.move(-1);
@@ -214,7 +214,7 @@ export class AsidePane implements Component, Focusable {
 			if (matchesKey(data, "pageUp")) return this.scrollThread(-page);
 			if (matchesKey(data, "pageDown")) return this.scrollThread(page);
 		}
-		this.input.submitDisabled = !!level.task;
+		this.input.submitDisabled = isBusy(level);
 		this.input.handleInput(data);
 		this.tui.requestRender();
 	}
@@ -297,8 +297,11 @@ export class AsidePane implements Component, Focusable {
 				},
 			}),
 		);
-		const target = level.depth === 1 ? "the main conversation" : `aside ${level.depth - 1}`;
-		const busy = level.task?.kind === "summary" ? `Summarizing for ${target}…` : level.task?.kind === "check" ? "Checking what the commands changed…" : undefined;
+		const busy = level.incoming.size
+			? `Summarizing aside ${level.depth + 1}…`
+			: level.task?.kind === "check"
+				? "Checking what the commands changed…"
+				: undefined;
 		return { blocks, notice: notice(busy ?? level.notice) };
 	}
 
@@ -451,7 +454,7 @@ export class AsidePane implements Component, Focusable {
 					...(level.depth < MAX_DEPTH ? [k("^⇧a", "nested aside")] : []),
 					k("^s / ^⇧s", "summary / whole thread & close"),
 					...(level.thread.some((e) => e.from) ? [k(keyText("app.tools.expand"), this.actions.expanded() ? "collapse" : "expand")] : []),
-					...(level.task && !listOpen ? [k("esc", "stop")] : []),
+					...(isBusy(level) && !listOpen ? [k("esc", "stop")] : []),
 					k(`${exitKey} (empty box)`, level.depth === 1 ? "close" : `back to aside ${level.depth - 1}`),
 				]
 			: [th.fg("dim", `aside ${level.depth + 1} is asking about this aside · ${exitKey} there to come back`)];

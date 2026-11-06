@@ -86,7 +86,8 @@ Top to bottom:
    expand or collapse once the thread has something a nested aside sent down, `esc` to stop while
    streaming, pi's exit key to close), at most two lines. The nested-aside hint
    disappears at the depth limit, and the `esc` hint hides while the autocomplete list is open.
-6. **Bottom border**: model, thinking level, and this aside's usage in pi's footer notation, cost
+6. **Bottom border**: model, thinking level, and this aside's usage (its answers, checks, and the
+   summaries of nested asides closed on it) in pi's footer notation, cost
    first so a narrow border keeps it. Aside usage is not in pi's totals.
 
 When space runs out, shrink the list and thread, then drop hint lines; always keep the question box
@@ -96,12 +97,13 @@ and bottom border.
 
 - `shift+↑` / `shift+↓`: select the previous or next single part.
 - The latest part is selected on open; new parts move the selection only if it was on the latest.
-- `enter`: ask (or run the slash command). `esc`: stop a streaming answer or summary, and nothing
+- `enter`: ask (or run the slash command). `esc`: stop a streaming answer, command check, or summary
+  of a nested aside, and nothing
   else, as in pi: it never closes an aside, so pressing it repeatedly to stop an answer is safe.
   pi's exit key (`ctrl+d` unless rebound) with an empty question box closes the top aside at once,
   mirroring pi's exit-when-empty; with text it deletes forward as in pi. Anything streaming (answer,
-  command check, summary) is stopped and its result dropped without waiting: closing says the user
-  no longer wants it.
+  command check, summary of a nested aside) is stopped and its result dropped without waiting:
+  closing says the user no longer wants it.
   `ctrl+shift+a` / `alt+a`: open a nested aside. `ctrl+s`: summarize down and
   close. `ctrl+shift+s`: send the whole thread down and close. pi's expand key (`ctrl+o` unless
   rebound): expand or collapse what nested asides sent down. pi's thinking toggle (`ctrl+t` unless
@@ -186,11 +188,22 @@ and bottom border.
 
 ## Sending down
 
-- `ctrl+s` summarizes the thread, delivers it one level down, then closes the aside. It closes only
-  after delivery; on failure or stop it stays open with a notice. It also stays open if a nested
-  aside was opened on it meanwhile.
+- `ctrl+s` closes the aside at once and summarizes its thread in the background with its model and
+  thinking level; the summary goes one level down when it is ready. Deviation from waiting for it:
+  the keys exist to close, so closing never waits for a model call. Meanwhile:
+  - **Aside 1**: pi's footer shows "aside: summarizing for the main conversation…", also after the
+    last aside closed. A prompt sent before the summary arrives goes without it, and the summary
+    is queued for the next turn.
+  - **Aside N**: aside N−1 shows "Summarizing aside N…", its usage counts the summary, and it takes
+    no question and sends nothing down until the summary arrives, so its next question and its own
+    handoff always include it. `esc` there stops the summary.
+  - A summary that fails or is stopped sends the whole thread instead, with a warning naming why.
+  - Nothing arrives when the level below closes first or pi quits or switches sessions. The changes
+    still do: the level below takes them over as the aside closes.
 - `ctrl+shift+s` delivers the whole thread as it is (every answered question and answer, and what
-  nested asides sent down) without a model call, then closes the aside the same way.
+  nested asides sent down) without a model call, then closes the aside.
+- Neither key keeps an aside open: if delivery fails, it closes anyway with an error notice. Losing
+  an aside's thread is acceptable; keeping it open would defeat the keys.
 - A few short bullets, about 150 words: conclusions, facts, decisions, corrections that matter
   below, without back-and-forth or restating what is known.
 - **From aside 1**: a visible message in the main conversation, labelled with the turns it covers
@@ -208,8 +221,8 @@ and bottom border.
   thread entry. There is one
   expansion state, pi's: the expand key in an aside toggles it for the main conversation too, the
   same as pressing it there. Only the display collapses; the model always gets the full text.
-- Needs at least one answered question, and nothing streaming. `esc` stops a summary. Outcomes show
-  as a notice.
+- Needs at least one answered question, and nothing streaming or still coming from a nested aside.
+  Outcomes show as pi notices.
 
 ## Stacking
 
@@ -251,7 +264,7 @@ Follows the window shape and updates live on resize.
   editor except for the aside's keys above, which the pane takes first. pi's editor handles esc,
   pi's exit key, the expand and thinking toggles, and enter, and the aside acts on them as listed
   under Keys. pi's other app keys (model cycling, image paste, extension shortcuts) do nothing in an
-  aside. Enter does nothing while an answer, check, or summary is streaming; text that is not asked
+  aside. Enter does nothing while an answer, check, or nested aside's summary is streaming; text that is not asked
   (a command kept with a notice) goes back into the box.
 - Completion is pi's: `tab` completes paths (a list when several match), `@` searches files, and
   other extensions' completions work, all from pi's editor provider. The list shows under the text

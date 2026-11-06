@@ -12,7 +12,7 @@ import { sendChanges, sendThread, summarize } from "./agent/handoff.ts";
 import { asideAutocomplete, type CommandHost, runCommand } from "./commands.ts";
 import { AUTOCOMPLETE_MAX_VISIBLE, MAX_DEPTH } from "./config.ts";
 import { type Part, partsFromThread, turnsFromBranch } from "./context/parts.ts";
-import { type AsideLevel, createLevel, discardLevel, levelThinking, usageLabel } from "./level.ts";
+import { type AsideLevel, createLevel, discardLevel, isBusy, levelThinking, usageLabel } from "./level.ts";
 import type { Model } from "./types.ts";
 import { liveOverlayOptions } from "./ui/layout.ts";
 import { AsidePane } from "./ui/pane.ts";
@@ -51,10 +51,13 @@ export class AsideStack {
 		private mainModel: Model,
 		/** The autocomplete provider of pi's editor, which the question boxes use too. */
 		private mainAutocomplete: AutocompleteProvider | undefined,
+		/** Summaries of aside 1 still being written; they outlive the stack. */
+		toMain: Set<AbortController>,
 	) {
 		this.env = {
 			ctx,
 			pi,
+			toMain,
 			mainTurns: () => this.mainTurns(),
 			parentOf: (level) => this.levels[this.levels.indexOf(level) - 1],
 			render: () => this.tui?.requestRender(),
@@ -107,7 +110,7 @@ export class AsideStack {
 
 	/** Ask `text` at `level`, or run it as a slash command. Returns false to keep it in the box. */
 	private submit(level: AsideLevel, text: string): boolean {
-		if (level.task) return false;
+		if (isBusy(level)) return false;
 		const result = runCommand(text, this.commandHost(level));
 		if (!result || result.kind === "ask") {
 			ask(this.env, level, text, result?.prompt);

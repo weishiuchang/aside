@@ -1,5 +1,10 @@
 # Changelog
 
+## [Unreleased]
+
+- `ctrl+s` closes the aside at once; the summary follows in the background, with a footer status
+  while it is on its way. If it fails, the whole discussion is sent instead.
+
 ## [0.1.0] - 2026-11-04
 
 - First release: hold a threaded side conversation about one turn or a range of turns, in a pane

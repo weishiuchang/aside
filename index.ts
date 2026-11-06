@@ -13,6 +13,8 @@ export default function aside(pi: ExtensionAPI) {
 	let stack: AsideStack | undefined;
 	/** The autocomplete provider of pi's editor, so the question boxes complete exactly as it does. */
 	let mainAutocomplete: AutocompleteProvider | undefined;
+	/** Summaries of aside 1 still being written; they go on after the stack closed. */
+	const toMain = new Set<AbortController>();
 
 	async function open(ctx: ExtensionContext) {
 		if (ctx.mode !== "tui") {
@@ -27,7 +29,7 @@ export default function aside(pi: ExtensionAPI) {
 			ctx.ui.notify("No model selected", "error");
 			return;
 		}
-		const opened = new AsideStack(ctx, pi, ctx.model, mainAutocomplete);
+		const opened = new AsideStack(ctx, pi, ctx.model, mainAutocomplete, toMain);
 		if (!opened.hasTurns()) {
 			ctx.ui.notify("Nothing to ask about yet. Send a prompt first.", "info");
 			return;
@@ -95,8 +97,14 @@ export default function aside(pi: ExtensionAPI) {
 
 	pi.on("turn_end", () => stack?.mainChanged());
 	pi.on("agent_end", () => stack?.mainChanged());
-	pi.on("session_shutdown", () => {
+	// Quitting or switching sessions drops what has not arrived: the summaries' ctx goes stale.
+	pi.on("session_shutdown", (_event, ctx) => {
 		stack?.closeAll();
 		stack = undefined;
+		if (!toMain.size) return;
+		const summaries = [...toMain];
+		toMain.clear();
+		for (const controller of summaries) controller.abort();
+		ctx.ui.setStatus(MESSAGE_TYPE, undefined);
 	});
 }

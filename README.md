@@ -72,12 +72,12 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 |---|---|
 | `shift+↑` / `shift+↓` | Pick an earlier or later turn |
 | `enter` | Ask |
-| `ctrl+s` | Summarize to the level below and close |
+| `ctrl+s` | Close and send a summary to the level below (it follows a few seconds later) |
 | `ctrl+shift+s` | Send the whole discussion, as it is, to the level below and close |
 | `ctrl+shift+a` or `alt+a` | Open an aside about this aside |
 | `ctrl+o` | Expand or collapse what was sent down from an aside above (same as in pi) |
 | `ctrl+t` | Show or hide thinking in the asides (same key as in pi) |
-| `esc` | Stop the answer (never closes the aside) |
+| `esc` | Stop the answer, or the summary coming from an aside above (never closes the aside) |
 | `ctrl+d` (question box empty) | Close the aside right away, dropping any answer or summary still coming (same key that exits pi) |
 | `pageUp` / `pageDown`, mouse wheel | Scroll the answers |
 | `shift+enter` or `ctrl+j` | New line (or type `\` before `enter`) |
@@ -119,7 +119,13 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
   get no dialog there, and approvals from the main conversation don't carry over. Sign in from the
   main editor, then ask again.
 - **Cost isn't in pi's footer**, only in each aside's border, and it goes away when the aside
-  closes.
+  closes. A summary sent to the main conversation isn't counted anywhere.
+- **A summary takes a few seconds to arrive.** `ctrl+s` closes the aside at once; pi's footer says
+  "aside: summarizing…" until the summary lands. If you send a prompt before then, the agent gets
+  the summary with your next one, so wait for the footer to clear when the prompt depends on it. If
+  the summary fails, the whole discussion is sent instead. In an aside below, you can't ask until
+  the summary from the aside above has arrived; `esc` stops it and sends the whole discussion.
+  Quitting pi or switching sessions first drops it.
 - **Each aside has its own model and thinking level.** A new aside starts with the settings of
   whatever it was opened from (the main conversation, or the aside below) and keeps them: later
   changes there don't reach it. `/model` and `/thinking` change only the aside you type them in,
