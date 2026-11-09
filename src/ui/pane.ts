@@ -20,7 +20,7 @@ import { type Part, rangeLabel, sentDownText } from "../context/parts.ts";
 import { clip, plural } from "../context/text.ts";
 import { type AsideLevel, answerVersion, handoffTitle, isBusy, type SentDown, selectedRange, stopStreaming, syncSelection } from "../level.ts";
 import { anchorRow, lineAnchor } from "./anchor.ts";
-import { QuestionBox } from "./question-box.ts";
+import { type EditorFactory, QuestionBox } from "./question-box.ts";
 import type { ToolCall } from "./tool-call.ts";
 
 export interface PaneActions {
@@ -30,6 +30,8 @@ export interface PaneActions {
 	autocomplete: AutocompleteProvider;
 	/** Rows of the autocomplete list, pi's setting. */
 	autocompleteMaxVisible: number;
+	/** The editor factory pi's main editor is built with, when editor extensions set one. */
+	editorFactory: EditorFactory | undefined;
 	/** Model, thinking level, and usage, for the bottom border. */
 	status: () => string;
 	summarize: () => void;
@@ -137,6 +139,7 @@ export class AsidePane implements Component, Focusable {
 			},
 			level.depth === 1 ? "Ask about the selected turns…" : `Ask about the selected exchanges of aside ${level.depth - 1}…`,
 			(t) => theme.fg("dim", t),
+			actions.editorFactory,
 		);
 		this.input.setValue(level.draft);
 	}
@@ -582,9 +585,11 @@ export class AsidePane implements Component, Focusable {
 		// The parent pane shows its unsent draft on one row, without a cursor.
 		const maxInputRows = Math.max(1, Math.min(MAX_INPUT_ROWS, Math.floor((H - lines.length - hints.length - 5) / 2)));
 		const box = isTop ? this.input.render(inner, maxInputRows) : { text: [th.fg("dim", `› ${draftPreview(level.draft)}`)], list: [] };
+		// What the editor shows on its border rows goes above and below the text, as in pi.
+		const text = [...("above" in box && box.above ? [box.above] : []), ...box.text, ...("below" in box && box.below ? [box.below] : [])];
 		// The autocomplete list goes under the text, as in pi, in at most half the rows left.
-		const list = box.list.slice(0, Math.max(0, Math.floor((H - lines.length - box.text.length - hints.length - 4) / 2)));
-		const inputRows = [...box.text, ...list];
+		const list = box.list.slice(0, Math.max(0, Math.floor((H - lines.length - text.length - hints.length - 4) / 2)));
+		const inputRows = [...text, ...list];
 		// Header rule, input rule, input and list, hints, bottom border.
 		const fixed = lines.length + 1 + 1 + inputRows.length + hints.length + 1;
 		const T = Math.max(1, H - fixed);

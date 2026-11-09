@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- The question box uses your editor extensions, as pi's main input box does (e.g. Vim-style
+  editing with its mode label, saved prompt history).
+
 - Tool calls show as they do in the main conversation, drawn by each tool's own renderer, with
   live progress while they run (e.g. a subagent's status), results, and `ctrl+o` to expand.
 

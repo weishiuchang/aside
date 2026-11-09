@@ -35,6 +35,10 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 - **Pick what to ask about** with `shift+↑`/`shift+↓` while you type.
   The pane previews your pick and warns when the next question is about something different.
 - **Follow up** in the same aside; it remembers the discussion.
+- **Type the way you do in pi.** The question box uses your editor extensions too (for example
+  Vim-style editing with its mode label, or saved prompt history on `↑`). Such an extension can
+  use `esc` or `ctrl+d` first: with Vim-style editing, `esc` in insert mode goes to normal mode,
+  and only the next `esc` stops an answer.
 - **Do things.** An aside has the same tools as the main agent (files, commands, MCP servers,
   other extensions' tools). Each action shows as it does in the main conversation, live progress
   included (for example a subagent's status while it runs); `ctrl+o` expands or collapses them.

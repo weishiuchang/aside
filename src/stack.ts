@@ -136,6 +136,8 @@ export class AsideStack {
 				submit: (text) => this.submit(level, text),
 				autocomplete: asideAutocomplete(this.commandHost(level), this.mainAutocomplete),
 				autocompleteMaxVisible: this.env.pi.getSettings().autocompleteMaxVisible ?? AUTOCOMPLETE_MAX_VISIBLE,
+				// Read for each box: editor extensions set it again on every session start.
+				editorFactory: this.ctx.ui.getEditorComponent(),
 				status: () => [level.model.id, levelThinking(level), usageLabel(level.usage)].filter(Boolean).join(" · "),
 				summarize: () => summarize(this.env, level, () => this.closeIfTop(level)),
 				sendThread: () => sendThread(this.env, level, () => this.closeIfTop(level)),

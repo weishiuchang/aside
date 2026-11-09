@@ -272,7 +272,14 @@ Follows the window shape and updates live on resize.
 ## Question box
 
 - It is pi's own editor with the autocomplete of pi's editor, so it behaves exactly as pi's
-  editor except for the aside's keys above, which the pane takes first. pi's editor handles esc,
+  editor except for the aside's keys above, which the pane takes first. It is built with the editor
+  factory pi's main editor is built with, read when the box is created, so editor extensions (modal
+  editing, persistent history, …) apply to it as to pi's editor; it is wired as pi wires a custom
+  editor: submit and change, border colour, padding, autocomplete, and, for editors built on pi's
+  editor, esc, pi's exit key, and the expand and thinking actions, where an extension's own esc and
+  exit handlers win, as in pi. An editor extension can therefore take esc or the exit key first
+  (e.g. esc leaving an insert mode) before the aside acts on it. If the factory or the editor it
+  built throws, the box falls back to pi's own editor, keeping the text. pi's editor handles esc,
   pi's exit key, the expand and thinking toggles, and enter, and the aside acts on them as listed
   under Keys. pi's other app keys (model cycling, image paste, extension shortcuts) do nothing in an
   aside. Enter does nothing while an answer, check, or nested aside's summary is streaming; text that is not asked
@@ -281,13 +288,14 @@ Follows the window shape and updates live on resize.
   other extensions' completions work, all from pi's editor provider. The list shows under the text
   in at most half of the rows left, with pi's `autocompleteMaxVisible` rows. Slash commands
   complete from the aside's commands (below).
-- Deviations from pi's editor, for the pane layout: no border rows and `editorPaddingX` is ignored
-  (the pane has its own borders and prompt column), it grows to 8 rows, and history is shared
-  between asides.
+- Deviations from pi's editor, for the pane layout: border rows show only when they hold more than
+  the line (pi's scroll markers, an extension's label such as a mode name), uncoloured, and
+  `editorPaddingX` is ignored (the pane has its own borders and prompt column), it grows to 8 rows,
+  and history is shared between asides.
 - `↑` / `↓` work as in pi's editor: move between lines; on the first line (empty box, cursor at
   start, or a recalled question) browse history. They never change the selection.
 - History: questions from any aside, up to 100, shared and kept in memory while pi runs, never on
-  disk.
+  disk, after what editor extensions put in the editor's history when they build it.
 - Pastes keep line breaks; long lines wrap. Grows to 8 rows, then scrolls with the cursor visible
   and markers for hidden rows. Empty box shows a placeholder naming what it asks about.
 - The draft survives stacking. The thread shows multi-line questions with their breaks.
