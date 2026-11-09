@@ -1,6 +1,6 @@
 /** One aside pane: the part list, the thread (or a preview), the question box, hints, and border. */
 
-import type { KeybindingsManager, Theme } from "@earendil-works/pi-coding-agent";
+import type { KeybindingsManager, MarkdownTransformContext, MarkdownTransformer, Theme } from "@earendil-works/pi-coding-agent";
 import { getMarkdownTheme, keyText, UserMessageComponent } from "@earendil-works/pi-coding-agent";
 import {
 	type AutocompleteProvider,
@@ -30,6 +30,8 @@ export interface PaneActions {
 	autocomplete: AutocompleteProvider;
 	/** Rows of the autocomplete list, pi's setting. */
 	autocompleteMaxVisible: number;
+	/** Extensions' Markdown transformers, which pi's main pane applies to prompts and answers. */
+	markdownTransformers: () => readonly MarkdownTransformer[];
 	/** The editor factory pi's main editor is built with, when editor extensions set one. */
 	editorFactory: EditorFactory | undefined;
 	/** Model, thinking level, and usage, for the bottom border. */
@@ -53,6 +55,15 @@ interface Section {
 	text: string;
 	thinking?: boolean;
 	tool?: ToolCall;
+	/** The model's answer or thinking, which Markdown transformers apply to, as to pi's assistant messages. */
+	answer?: boolean;
+}
+
+/** What draws a section: pi's Markdown or Text component, or a tool call. */
+interface View {
+	render(width: number): string[];
+	setText?(text: string): void;
+	invalidate(): void;
 }
 
 /** pi's label for a hidden thinking block. */
@@ -61,30 +72,46 @@ const HIDDEN_THINKING_LABEL = "Thinking...";
 const markdown = (text: string): Section[] => [{ text }];
 
 /**
- * A block of the thread area. Rendered lines are cached per `key` object and reused while
- * `version` and the width are unchanged, so a frame only renders the block that is streaming; in
- * that block, only sections whose text changed (the growing one) are rendered again. Tool calls
- * change without the block's version (progress, their own redraws), so they render every frame,
- * as in pi's main pane, and the block is put together again only when one of them changed.
+ * A block of the thread area. Its lines are put together again only when `version` or the width
+ * changed, or when one of its components draws differently. Each section keeps its component, as
+ * pi's main pane does, and every component of a shown block renders once per frame: pi's Markdown
+ * returns its cached lines unless its text changed or something invalidated it (an extension
+ * redrawing Markdown, a tool's progress), so a frame does real work only for what changed.
  */
 interface Block {
 	key: object;
 	version: string;
 	/** A question, shown above `text` the way pi's main pane shows a user prompt. */
 	prompt?: string;
+	/** Whether the answer is still streaming, for Markdown transformers. */
+	streaming?: boolean;
 	sections: () => Section[];
 }
 
-/** A block's rendered lines, and its question's and sections' lines, to re-render only what changed. */
+/** A section with its component and the lines it last drew. */
+interface SectionRender extends Section {
+	view: View;
+	/** Thinking drawn as one hidden-thinking line: the view keeps its label, not the text. */
+	hidden: boolean;
+	lines: string[];
+}
+
+/** A block's rendered lines, and its question's and sections' components, to re-render only what changed. */
 interface BlockRender {
 	width: number;
 	version: string;
 	lines: string[];
 	thinkingHidden: boolean;
-	/** The frame its tool calls were last rendered in. */
+	streaming: boolean;
+	/** The frame its components were last rendered in. */
 	frame: number;
-	prompt?: { text: string; lines: string[] };
-	sections: (Section & { lines: string[] })[];
+	prompt?: { text: string; view: View; lines: string[] };
+	sections: SectionRender[];
+}
+
+/** Whether two renders of a component drew the same lines. */
+function sameLines(a: string[], b: string[]): boolean {
+	return a === b || (a.length === b.length && a.every((l, i) => l === b[i]));
 }
 
 /** Part-list marks for what a nested aside sent down. */
@@ -111,8 +138,10 @@ export class AsidePane implements Component, Focusable {
 	private shown?: { width: number; start: number; scroll: number };
 	/** Cache key of the status line under the thread. */
 	private readonly noticeKey = {};
-	/** Counts renders, so a block's tool calls render once per frame however often the block is read. */
+	/** Counts renders, so a block's components render once per frame however often the block is read. */
 	private frame = 0;
+	/** The Markdown transformers the cached blocks were drawn with. */
+	private transformers: readonly MarkdownTransformer[] = [];
 
 	constructor(
 		private tui: TUI,
@@ -291,6 +320,7 @@ export class AsidePane implements Component, Focusable {
 				key: ex,
 				version: `${answerVersion(ex)}|${ex.done}|${ex.aborted}|${ex.error ?? ""}|${expanded}|${thinkingHidden}`,
 				prompt: ex.from ? undefined : ex.question,
+				streaming: !ex.done && !ex.aborted && !ex.error,
 				sections: () => {
 					if (ex.from && !expanded) return markdown(`**${handoffTitle(ex.from)}** _(${keyText("app.tools.expand")} to expand)_`);
 					if (ex.from) return markdown(`**${handoffTitle(ex.from)}:**\n\n${sentDownText(ex)}`);
@@ -301,7 +331,7 @@ export class AsidePane implements Component, Focusable {
 							continue;
 						}
 						const text = s.text.trim();
-						if (text) sections.push({ text, thinking: s.kind === "thinking" });
+						if (text) sections.push({ text, thinking: s.kind === "thinking", answer: true });
 					}
 					const status: string[] = [];
 					if (sections.length === 1 && !ex.error && !ex.aborted) status.push("_…_");
@@ -323,25 +353,41 @@ export class AsidePane implements Component, Focusable {
 	private blockLines(width: number, block: Block): string[] {
 		const thinkingHidden = this.actions.thinkingHidden();
 		let hit = this.blockCache.get(block.key);
-		if (hit && hit.width === width && hit.version === block.version && !this.toolsChanged(hit)) return hit.lines;
+		if (hit && hit.width === width && hit.version === block.version && !this.redrawn(hit)) return hit.lines;
 		if (!hit || hit.width !== width || hit.thinkingHidden !== thinkingHidden) {
-			hit = { width, version: "", lines: [], thinkingHidden, frame: this.frame, sections: [] };
+			hit = { width, version: "", lines: [], thinkingHidden, streaming: false, frame: this.frame, sections: [] };
 			this.blockCache.set(block.key, hit);
 		}
-		// Tool calls render afresh: what they draw can change without the block's version.
-		const old = hit.sections;
-		hit.sections = block.sections().map((s, i) =>
-			!s.tool && old[i]?.text === s.text && old[i].thinking === s.thinking && !old[i].tool
-				? old[i]
-				: { ...s, lines: this.sectionLines(width, s) },
-		);
-		hit.frame = this.frame;
-		if (hit.prompt?.text !== block.prompt) {
-			hit.prompt = block.prompt ? { text: block.prompt, lines: new UserMessageComponent(block.prompt).render(width) } : undefined;
+		const cache = hit;
+		// Transformers see whether the answer streams; when that changes, they run again, as in pi.
+		const streaming = block.streaming ?? false;
+		const streamEnded = cache.streaming !== streaming;
+		cache.streaming = streaming;
+		const old = cache.sections;
+		cache.sections = block.sections().map((s, i) => {
+			const prev = old[i];
+			let entry: SectionRender;
+			if (prev && prev.tool === s.tool && !!prev.thinking === !!s.thinking && !!prev.answer === !!s.answer) {
+				entry = prev;
+				if (!prev.hidden && prev.text !== s.text) prev.view.setText?.(s.text);
+				else if (streamEnded && prev.answer) prev.view.invalidate();
+				entry.text = s.text;
+			} else {
+				entry = { ...s, ...this.sectionView(s, () => cache.streaming), lines: [] };
+			}
+			entry.lines = entry.view.render(width);
+			return entry;
+		});
+		if (cache.prompt?.text !== block.prompt) {
+			cache.prompt = block.prompt
+				? { text: block.prompt, view: new UserMessageComponent(block.prompt, getMarkdownTheme(), undefined, this.transformers), lines: [] }
+				: undefined;
 		}
-		const lines = [...(hit.prompt?.lines ?? [])];
+		if (cache.prompt) cache.prompt.lines = cache.prompt.view.render(width);
+		cache.frame = this.frame;
+		const lines = [...(cache.prompt?.lines ?? [])];
 		let body = false;
-		for (const { lines: rendered } of hit.sections) {
+		for (const { lines: rendered } of cache.sections) {
 			let start = 0;
 			let end = rendered.length;
 			while (end && !rendered[end - 1].trim()) end--;
@@ -351,40 +397,66 @@ export class AsidePane implements Component, Focusable {
 			body = true;
 			for (let i = start; i < end; i++) lines.push(rendered[i]);
 		}
-		hit.version = block.version;
-		hit.lines = lines;
+		cache.version = block.version;
+		cache.lines = lines;
 		return lines;
 	}
 
 	/**
-	 * Render a block's tool calls again, once per frame; whether any of them now draws differently.
-	 * Only the tool calls' own lines are compared, not the whole block's.
+	 * Render a block's components again, once per frame; whether any of them now draws differently
+	 * (a tool's progress, an extension that redraws Markdown). Unchanged Markdown returns the same
+	 * lines, so only components that drew new lines are compared.
 	 */
-	private toolsChanged(hit: BlockRender): boolean {
+	private redrawn(hit: BlockRender): boolean {
 		if (hit.frame === this.frame) return false;
 		hit.frame = this.frame;
 		let changed = false;
-		for (const s of hit.sections) {
-			if (!s.tool) continue;
-			const lines = this.sectionLines(hit.width, s);
-			if (lines.length !== s.lines.length || lines.some((l, i) => l !== s.lines[i])) {
-				s.lines = lines;
-				changed = true;
-			}
+		for (const s of hit.prompt ? [hit.prompt, ...hit.sections] : hit.sections) {
+			const lines = s.view.render(hit.width);
+			if (lines === s.lines) continue;
+			if (!sameLines(lines, s.lines)) changed = true;
+			s.lines = lines;
 		}
 		return changed;
 	}
 
 	/**
-	 * A section as pi's main pane draws it: a tool call with its tool's renderers and pi's tool-output
-	 * expansion, thinking in the theme's thinking colour, italic, or one line when hidden.
+	 * A section's component as pi's main pane draws it: a tool call with its tool's renderers and pi's
+	 * tool-output expansion; thinking in the theme's thinking colour, italic, or one line when
+	 * hidden; Markdown, with extensions' transformers on the model's answer and thinking.
 	 */
-	private sectionLines(width: number, section: Section): string[] {
-		if (section.tool) return section.tool.render(width, this.actions.expanded());
+	private sectionView(section: Section, streaming: () => boolean): { view: View; hidden: boolean } {
+		const tool = section.tool;
+		if (tool) return { view: { render: (w) => tool.render(w, this.actions.expanded()), invalidate: () => {} }, hidden: false };
 		const th = this.theme;
-		if (!section.thinking) return new Markdown(section.text, 0, 0, getMarkdownTheme()).render(width);
-		if (this.actions.thinkingHidden()) return new Text(th.italic(th.fg("thinkingText", HIDDEN_THINKING_LABEL)), 0, 0).render(width);
-		return new Markdown(section.text, 0, 0, getMarkdownTheme(), { color: (t) => th.fg("thinkingText", t), italic: true }).render(width);
+		if (section.thinking && this.actions.thinkingHidden()) {
+			return { view: new Text(th.italic(th.fg("thinkingText", HIDDEN_THINKING_LABEL)), 0, 0), hidden: true };
+		}
+		const style = section.thinking ? { color: (t: string) => th.fg("thinkingText", t), italic: true } : undefined;
+		const transform = section.answer ? this.transform(section.thinking ? "assistant-thinking" : "assistant", streaming) : undefined;
+		return { view: new Markdown(section.text, 0, 0, getMarkdownTheme(), style, transform ? { transform } : undefined), hidden: false };
+	}
+
+	/**
+	 * Apply extensions' Markdown transformers in order, as pi's main pane does (its
+	 * `createMarkdownTransform`, pi 1.5.0): one that throws or returns no string is skipped.
+	 */
+	private transform(messageType: MarkdownTransformContext["messageType"], streaming: () => boolean) {
+		const transformers = this.transformers;
+		if (!transformers.length) return undefined;
+		return (markdown: string, availableWidth: number) => {
+			const context: MarkdownTransformContext = { messageType, isStreaming: streaming(), availableWidth };
+			let out = markdown;
+			for (const transformer of transformers) {
+				try {
+					const next = transformer(out, context);
+					if (typeof next === "string") out = next;
+				} catch {
+					// Keep the current Markdown and go on with the next transformer.
+				}
+			}
+			return out;
+		};
 	}
 
 	private separatorLines(width: number): string[] {
@@ -523,6 +595,12 @@ export class AsidePane implements Component, Focusable {
 	/** Render exactly `height` rows; the stack view decides each pane's size. */
 	renderBox(width: number, height: number): string[] {
 		this.frame++;
+		// Transformers arrive with the level's session; blocks drawn without them are drawn again.
+		const transformers = this.actions.markdownTransformers();
+		if (transformers !== this.transformers) {
+			this.transformers = transformers;
+			this.blockCache = new WeakMap();
+		}
 		const th = this.theme;
 		const level = this.level;
 		const parts = this.parts();

@@ -3,7 +3,16 @@
  * changes the list of levels; the overlay re-reads its size and layout on every render.
  */
 
-import { type ExtensionAPI, type ExtensionContext, getAgentDir, type KeybindingsManager, SettingsManager, type Theme } from "@earendil-works/pi-coding-agent";
+import {
+	type AgentSession,
+	type ExtensionAPI,
+	type ExtensionContext,
+	getAgentDir,
+	type KeybindingsManager,
+	type MarkdownTransformer,
+	SettingsManager,
+	type Theme,
+} from "@earendil-works/pi-coding-agent";
 import type { AutocompleteProvider, OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import { ask } from "./agent/ask.ts";
 import { toolCallLine } from "./agent/changes.ts";
@@ -45,6 +54,12 @@ export class AsideStack {
 	 * pi's thinking toggle in an aside. Read from pi's settings, which pi saves on every toggle.
 	 */
 	private thinkingHidden: boolean;
+	/**
+	 * Extensions' Markdown transformers, from the first aside session that starts: the main
+	 * conversation's are not readable, and every aside session loads the same extensions.
+	 */
+	private transformers: readonly MarkdownTransformer[] = [];
+	private transformersRead = false;
 
 	constructor(
 		private ctx: ExtensionContext,
@@ -136,6 +151,7 @@ export class AsideStack {
 				submit: (text) => this.submit(level, text),
 				autocomplete: asideAutocomplete(this.commandHost(level), this.mainAutocomplete),
 				autocompleteMaxVisible: this.env.pi.getSettings().autocompleteMaxVisible ?? AUTOCOMPLETE_MAX_VISIBLE,
+				markdownTransformers: () => this.transformers,
 				// Read for each box: editor extensions set it again on every session start.
 				editorFactory: this.ctx.ui.getEditorComponent(),
 				status: () => [level.model.id, levelThinking(level), usageLabel(level.usage)].filter(Boolean).join(" · "),
@@ -158,8 +174,21 @@ export class AsideStack {
 		);
 		// After the pane is drawn, so the first frame is not held up.
 		setTimeout(() => {
-			if (this.levels.includes(level)) void levelSession(this.env.pi, this.ctx.cwd, level).catch(() => {});
+			if (this.levels.includes(level)) {
+				void levelSession(this.env.pi, this.ctx.cwd, level)
+					.then((session) => this.readTransformers(session))
+					.catch(() => {});
+			}
 		}, 0);
+	}
+
+	private readTransformers(session: AgentSession) {
+		if (this.transformersRead) return;
+		this.transformersRead = true;
+		const transformers = session.extensionRunner.getMarkdownTransformers();
+		if (!transformers.length) return;
+		this.transformers = transformers;
+		this.tui?.requestRender();
 	}
 
 	/** Open aside 1. Resolves when the whole stack closed. */

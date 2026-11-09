@@ -74,7 +74,15 @@ Top to bottom:
    questions in the thread are styled as the main pane styles a user prompt, followed by the part
    number or what the question asked about. The model's thinking streams in place, between the
    text and tool calls, styled as the main pane styles it (the theme's thinking colour,
-   italic), or as one "Thinking..." line while thinking is hidden. The thread follows streaming output
+   italic), or as one "Thinking..." line while thinking is hidden. Text is drawn with pi's Markdown
+   component, one per section kept across frames as in pi's main pane, so what changes a component
+   (an extension that patches or redraws pi's Markdown, e.g. a copy button's "Copied" note) shows
+   at the next frame. Extensions' Markdown transformers apply as in the main pane: to questions as
+   user messages, and to the answer and thinking as assistant messages, told whether the answer
+   still streams (and run again when it ends); not to labels, notices, previews, or what nested
+   asides sent down. They are read from the first aside session that starts (every aside session
+   loads the same extensions); text drawn before that is drawn again with them. Deviation: pi's
+   built-in Mermaid transformer is not exported, so Mermaid blocks stay code. The thread follows streaming output
    unless scrolled away, with a notice line at the end for status messages. It renders at most 5
    exchanges at a time (latest by default) so streaming stays fast; scrolling past either edge
    slides the next exchange in while keeping the text in place, so the thread scrolls like one
@@ -381,8 +389,12 @@ substitution, tool info, tool events, and the tool component against **pi 1.5.0*
   command names and template argument substitution are not exported and must be reproduced.
 - Extensions can read and set pi's editor text but cannot run built-in commands.
 - pi exports the main pane's user-prompt component: Markdown on the theme's user-message background,
-  wrapped in OSC 133 prompt marks. The output-padding setting and Markdown transformers (e.g.
-  Mermaid) that the main pane passes it are not available to extensions; the defaults apply.
+  wrapped in OSC 133 prompt marks, and takes Markdown transformers. The output-padding setting the
+  main pane passes it is not available to extensions; the default applies.
+- A session's extension runner lists extensions' Markdown transformers. pi applies them in order
+  through a Markdown option, skipping one that throws or returns no string; its own Mermaid
+  transformer is internal. pi's Markdown component returns the same lines array while its text and
+  width are unchanged and nothing invalidated it.
 - Extensions can send a visible custom message without starting a turn, or queue it for the next.
 - A message renderer for a custom message type gets pi's tool-output expansion state and is re-run
   when it changes; returning nothing falls back to pi's default custom-message rendering.

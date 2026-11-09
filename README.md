@@ -62,6 +62,8 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 - **Fit the window.** Wide window: the aside takes the right half. Tall window: the top half. With
   two or more open, the top two share the screen and the rest shrink to thin strips. Resizing
   rearranges everything right away.
+- **Draw text the way the main conversation does**, including what extensions add to it (for
+  example a copy button on code blocks). Mermaid diagrams stay code in an aside.
 - **Show the model's thinking** the way the main conversation does, or as one "Thinking..." line
   if you hid thinking in pi. Thinking stays in the aside: it isn't sent down.
 - **Show cost.** Each aside's bottom border shows its model and what it has cost so far.

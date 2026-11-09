@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+- Text follows extensions that change how pi draws Markdown: transformers, and components they
+  redraw (e.g. pi-code-copy's "✓ Copied").
 - The question box uses your editor extensions, as pi's main input box does (e.g. Vim-style
   editing with its mode label, saved prompt history).
 
