@@ -21,6 +21,7 @@ import { clip, plural } from "../context/text.ts";
 import { type AsideLevel, answerVersion, handoffTitle, isBusy, type SentDown, selectedRange, stopStreaming, syncSelection } from "../level.ts";
 import { anchorRow, lineAnchor } from "./anchor.ts";
 import { QuestionBox } from "./question-box.ts";
+import type { ToolCall } from "./tool-call.ts";
 
 export interface PaneActions {
 	/** Ask a question or run a slash command. Returns false to keep the text in the box. */
@@ -45,10 +46,11 @@ export interface PaneActions {
 	close: () => void;
 }
 
-/** Part of a block: Markdown, or the model's thinking, styled as pi's main pane styles it. */
+/** Part of a block: Markdown, the model's thinking, or a tool call, styled as pi's main pane styles it. */
 interface Section {
 	text: string;
 	thinking?: boolean;
+	tool?: ToolCall;
 }
 
 /** pi's label for a hidden thinking block. */
@@ -59,7 +61,9 @@ const markdown = (text: string): Section[] => [{ text }];
 /**
  * A block of the thread area. Rendered lines are cached per `key` object and reused while
  * `version` and the width are unchanged, so a frame only renders the block that is streaming; in
- * that block, only sections whose text changed (the growing one) are rendered again.
+ * that block, only sections whose text changed (the growing one) are rendered again. Tool calls
+ * change without the block's version (progress, their own redraws), so they render every frame,
+ * as in pi's main pane, and the block is put together again only when one of them changed.
  */
 interface Block {
 	key: object;
@@ -75,6 +79,8 @@ interface BlockRender {
 	version: string;
 	lines: string[];
 	thinkingHidden: boolean;
+	/** The frame its tool calls were last rendered in. */
+	frame: number;
 	prompt?: { text: string; lines: string[] };
 	sections: (Section & { lines: string[] })[];
 }
@@ -103,6 +109,8 @@ export class AsidePane implements Component, Focusable {
 	private shown?: { width: number; start: number; scroll: number };
 	/** Cache key of the status line under the thread. */
 	private readonly noticeKey = {};
+	/** Counts renders, so a block's tool calls render once per frame however often the block is read. */
+	private frame = 0;
 
 	constructor(
 		private tui: TUI,
@@ -285,6 +293,10 @@ export class AsidePane implements Component, Focusable {
 					if (ex.from) return markdown(`**${handoffTitle(ex.from)}:**\n\n${sentDownText(ex)}`);
 					const sections: Section[] = [{ text: `_(${ex.label})_` }];
 					for (const s of ex.segments) {
+						if (s.kind === "tool") {
+							sections.push({ text: "", tool: s.call });
+							continue;
+						}
 						const text = s.text.trim();
 						if (text) sections.push({ text, thinking: s.kind === "thinking" });
 					}
@@ -308,35 +320,64 @@ export class AsidePane implements Component, Focusable {
 	private blockLines(width: number, block: Block): string[] {
 		const thinkingHidden = this.actions.thinkingHidden();
 		let hit = this.blockCache.get(block.key);
-		if (hit && hit.width === width && hit.version === block.version) return hit.lines;
+		if (hit && hit.width === width && hit.version === block.version && !this.toolsChanged(hit)) return hit.lines;
 		if (!hit || hit.width !== width || hit.thinkingHidden !== thinkingHidden) {
-			hit = { width, version: "", lines: [], thinkingHidden, sections: [] };
+			hit = { width, version: "", lines: [], thinkingHidden, frame: this.frame, sections: [] };
 			this.blockCache.set(block.key, hit);
 		}
+		// Tool calls render afresh: what they draw can change without the block's version.
 		const old = hit.sections;
 		hit.sections = block.sections().map((s, i) =>
-			old[i]?.text === s.text && old[i].thinking === s.thinking ? old[i] : { ...s, lines: this.sectionLines(width, s) },
+			!s.tool && old[i]?.text === s.text && old[i].thinking === s.thinking && !old[i].tool
+				? old[i]
+				: { ...s, lines: this.sectionLines(width, s) },
 		);
+		hit.frame = this.frame;
 		if (hit.prompt?.text !== block.prompt) {
 			hit.prompt = block.prompt ? { text: block.prompt, lines: new UserMessageComponent(block.prompt).render(width) } : undefined;
 		}
 		const lines = [...(hit.prompt?.lines ?? [])];
 		let body = false;
 		for (const { lines: rendered } of hit.sections) {
+			let start = 0;
 			let end = rendered.length;
 			while (end && !rendered[end - 1].trim()) end--;
-			if (!end) continue;
+			while (start < end && !rendered[start].trim()) start++;
+			if (start === end) continue;
 			if (body) lines.push("");
 			body = true;
-			for (let i = 0; i < end; i++) lines.push(rendered[i]);
+			for (let i = start; i < end; i++) lines.push(rendered[i]);
 		}
 		hit.version = block.version;
 		hit.lines = lines;
 		return lines;
 	}
 
-	/** A section as pi's main pane draws it: thinking in the theme's thinking colour, italic, or one line when hidden. */
+	/**
+	 * Render a block's tool calls again, once per frame; whether any of them now draws differently.
+	 * Only the tool calls' own lines are compared, not the whole block's.
+	 */
+	private toolsChanged(hit: BlockRender): boolean {
+		if (hit.frame === this.frame) return false;
+		hit.frame = this.frame;
+		let changed = false;
+		for (const s of hit.sections) {
+			if (!s.tool) continue;
+			const lines = this.sectionLines(hit.width, s);
+			if (lines.length !== s.lines.length || lines.some((l, i) => l !== s.lines[i])) {
+				s.lines = lines;
+				changed = true;
+			}
+		}
+		return changed;
+	}
+
+	/**
+	 * A section as pi's main pane draws it: a tool call with its tool's renderers and pi's tool-output
+	 * expansion, thinking in the theme's thinking colour, italic, or one line when hidden.
+	 */
 	private sectionLines(width: number, section: Section): string[] {
+		if (section.tool) return section.tool.render(width, this.actions.expanded());
 		const th = this.theme;
 		if (!section.thinking) return new Markdown(section.text, 0, 0, getMarkdownTheme()).render(width);
 		if (this.actions.thinkingHidden()) return new Text(th.italic(th.fg("thinkingText", HIDDEN_THINKING_LABEL)), 0, 0).render(width);
@@ -478,6 +519,7 @@ export class AsidePane implements Component, Focusable {
 
 	/** Render exactly `height` rows; the stack view decides each pane's size. */
 	renderBox(width: number, height: number): string[] {
+		this.frame++;
 		const th = this.theme;
 		const level = this.level;
 		const parts = this.parts();

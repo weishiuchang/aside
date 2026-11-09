@@ -6,6 +6,7 @@ import type { Change } from "./agent/changes.ts";
 import { closeSession } from "./agent/session.ts";
 import type { Noun, Part } from "./context/parts.ts";
 import type { Model, ThinkingLevel } from "./types.ts";
+import type { ToolCall } from "./ui/tool-call.ts";
 
 /** What a nested aside sends down: a summary of its thread, or the whole thread as it is. */
 export type Handoff = "summary" | "thread";
@@ -20,11 +21,11 @@ export function handoffTitle(from: NonNullable<Exchange["from"]>): string {
 	return `${SENT_TITLES[from.handoff]} from aside ${from.depth}`;
 }
 
-/** A run of answer text (tool-call lines included) or of the model's thinking, in streamed order. */
-export interface Segment {
-	kind: "text" | "thinking";
-	text: string;
-}
+/**
+ * A run of answer text or of the model's thinking, or one tool call, in streamed order. A tool
+ * call's `text` is its one-line form, which the thread hands on; it is set once the call starts.
+ */
+export type Segment = { kind: "text" | "thinking"; text: string } | { kind: "tool"; text: string; call: ToolCall };
 
 /** A question and its answer, or what a nested aside sent down to this level. */
 export interface Exchange {
@@ -33,7 +34,7 @@ export interface Exchange {
 	rangeKey: string;
 	/** The selection in words, e.g. "turns 2–4". */
 	label: string;
-	/** The streamed answer: text with a line per tool call, and thinking, in order. */
+	/** The streamed answer: text, tool calls, and thinking, in order. */
 	segments: Segment[];
 	toolCalls: number;
 	/** Set on what a nested aside sent down: which aside, and what it sent. */
@@ -46,23 +47,26 @@ export interface Exchange {
 }
 
 /** Add streamed `text` to the answer, continuing the last segment when it is the same kind. */
-export function appendAnswer(ex: Exchange, kind: Segment["kind"], text: string) {
+export function appendAnswer(ex: Exchange, kind: "text" | "thinking", text: string) {
 	const last = ex.segments[ex.segments.length - 1];
 	if (last?.kind === kind) last.text += text;
 	else ex.segments.push({ kind, text });
 }
 
-/** The answer without thinking: what the thread hands on (nested asides, handoffs). */
+/** The answer without thinking, with a line per tool call: what the thread hands on (nested asides, handoffs). */
 export function answerText(ex: Exchange): string {
 	return ex.segments
-		.filter((s) => s.kind === "text")
+		.filter((s) => s.kind !== "thinking")
 		.map((s) => s.text)
 		.join("");
 }
 
-/** Changes whenever the answer grows: segments only ever grow at the end. */
+/**
+ * Changes whenever the answer's text grows: segments only ever grow at the end, and a tool call's
+ * line is set when it starts, which counts it. Tool calls redraw on their own (pane.ts).
+ */
 export function answerVersion(ex: Exchange): string {
-	return `${ex.segments.length}:${ex.segments[ex.segments.length - 1]?.text.length ?? 0}`;
+	return `${ex.segments.length}:${ex.segments[ex.segments.length - 1]?.text.length ?? 0}:${ex.toolCalls}`;
 }
 
 export interface UsageTotals {

@@ -73,7 +73,7 @@ Top to bottom:
    shortened, tool-call count). After it, the **thread** as Markdown. Prompts in the preview and
    questions in the thread are styled as the main pane styles a user prompt, followed by the part
    number or what the question asked about. The model's thinking streams in place, between the
-   text and tool-call lines, styled as the main pane styles it (the theme's thinking colour,
+   text and tool calls, styled as the main pane styles it (the theme's thinking colour,
    italic), or as one "Thinking..." line while thinking is hidden. The thread follows streaming output
    unless scrolled away, with a notice line at the end for status messages. It renders at most 5
    exchanges at a time (latest by default) so streaming stays fast; scrolling past either edge
@@ -106,7 +106,7 @@ and bottom border.
   closing says the user no longer wants it.
   `ctrl+shift+a` / `alt+a`: open a nested aside. `ctrl+s`: summarize down and
   close. `ctrl+shift+s`: send the whole thread down and close. pi's expand key (`ctrl+o` unless
-  rebound): expand or collapse what nested asides sent down. pi's thinking toggle (`ctrl+t` unless
+  rebound): expand or collapse tool calls and what nested asides sent down. pi's thinking toggle (`ctrl+t` unless
   rebound): show or hide thinking in every open aside. `pageUp` / `pageDown`: scroll the thread
   (they page the autocomplete list while it is open, as in pi). Other keys go to the question box.
 - **Thinking visibility** starts as pi's thinking-block setting (global, plus project when the
@@ -141,7 +141,18 @@ and bottom border.
   for the main agent, and to ask before a call that could change or delete data outside the
   working directory unless the user asked for exactly that.
 - **Tools**: the main agent's active tools plus read, grep, find, ls, bash, edit, write. Each call
-  shows as one line in the thread.
+  shows in the thread as pi's main pane shows it: pi's tool component with the tool's own
+  renderers (an extension's, or pi's built-in ones), from its first streamed arguments on, with
+  live progress from the tool's partial results, its result, and pi's tool-output expansion
+  (`ctrl+o` unless rebound) collapsing or expanding every call at once. Calls made by code that
+  calls tools (codemode) show inside their parent's row, as in pi. A message that fails or is
+  stopped marks the calls it was streaming as failed, with pi's wording. Output padding and image
+  width come from pi's settings. Deviations: images in tool results are not drawn, because an
+  overlay splices rendered lines, which breaks terminal image sequences; clicks in a tool's row do
+  nothing (clicks in the thread are a non-goal); if pi's tool component throws, the call falls
+  back to one line (tool name and its salient argument), so another extension cannot break the
+  pane. What the thread hands on (nested asides, handoffs, the command check) keeps one line per
+  call.
 - **Extensions' hooks** (permission checks, guards, logging) apply to aside tool calls, as separate
   instances with no UI. The README says dialogs don't appear in an aside.
 - **Changes go down with the aside.** Possible changes from every answer are collected per aside,
@@ -346,7 +357,7 @@ Only where pi enables it (fullscreen mode, the default).
 ## Platform notes
 
 Facts about pi, checked against **pi 1.3.0**; built-in command names, template argument
-substitution, and tool info against **pi 1.5.0**. Hints, not requirements; re-check on upgrade.
+substitution, tool info, tool events, and the tool component against **pi 1.5.0**. Hints, not requirements; re-check on upgrade.
 
 - Overlays: pi keeps an overlay's options object and re-reads its fields every render, so computed
   fields let one overlay change size and position live. Not a documented contract; the documented
@@ -387,8 +398,13 @@ substitution, and tool info against **pi 1.5.0**. Hints, not requirements; re-ch
   - Binding extensions with no UI starts them; only then can the model be set, matched by provider
     and id among the session's available models. Create and bind take a fraction of a second.
   - Prompting with template expansion off sends text as is, without running extension commands.
-  - Session events stream text deltas, tool start and end (args, error), turn starts, and finished
-    messages with stop reasons. Aborting stops a running tool.
+  - Session events stream text deltas, streamed tool-call arguments (in the message), tool start,
+    partial results and end (args, result, error, duration), the parent call of nested calls, turn
+    starts, and finished messages with stop reasons. Aborting stops a running tool.
+  - pi exports its main pane's tool component. A session resolves a tool's renderers through its
+    extensions' renderer lookups over the tool's definition; built-in definitions include pi's
+    renderers. Renderers can redraw themselves (a callback that invalidates and requests a render),
+    so the component's lines can change between session events.
 - A session's tool info names a tool's namespace (`mcp__<server>` for pi's MCP tools), its declared
   annotations (e.g. read-only), and, for tools that reach other tools (codemode, tool search), a
   `reachesTools` function. Tools proxied by an extension without these look like plain tools.

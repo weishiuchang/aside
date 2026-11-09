@@ -94,3 +94,4 @@ point, each told to read this file first and to edit nothing.
   - `question-box.ts`: the question box, pi's CustomEditor without borders
   - `reflow.ts`: moves the main conversation out from under aside 1 (fullscreen mode)
   - `anchor.ts`: keeps the top line in place when text re-wraps
+  - `tool-call.ts`: one tool call, drawn by pi's tool component with the tool's renderers

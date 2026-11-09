@@ -1,11 +1,11 @@
 /** Asking a question at one aside level, through the level's agent session. */
 
-import type { ToolInfo } from "@earendil-works/pi-coding-agent";
+import type { AgentSession, ToolInfo, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import { NESTED_MAIN_MAX_CHARS } from "../config.ts";
 import { backgroundBlock, focusBlock } from "../context/blocks.ts";
 import { type Part, rangeLabel } from "../context/parts.ts";
 import { textOf } from "../context/text.ts";
-import { type AsideLevel, addUsage, appendAnswer, type Exchange, levelThinking, selectedRange, syncSelection } from "../level.ts";
+import { type AsideLevel, addUsage, appendAnswer, type Exchange, levelThinking, type Segment, selectedRange, syncSelection } from "../level.ts";
 import { type Change, changeOf, toolCallLine } from "./changes.ts";
 import { commandChanges, type RanCommand, unchecked } from "./command-check.ts";
 import type { AsideEnv } from "./env.ts";
@@ -33,6 +33,15 @@ function buildPrompt(env: AsideEnv, level: AsideLevel, parts: Part[], lo: number
 	else if (level.sentFocus !== rangeKey) sections.push(`The focus has changed.\n\n${focusBlock(parts, lo, hi, level.noun)}`);
 	sections.push(sections.length ? `Question: ${question}` : question);
 	return sections.filter(Boolean).join("\n\n");
+}
+
+/** A tool's renderers in `session`, as pi's main pane looks them up; none when an extension's lookup throws. */
+function renderersOf(session: AgentSession, name: string): ToolRenderers | undefined {
+	try {
+		return session.extensionRunner.resolveToolRenderers(name, () => session.getToolDefinition(name));
+	} catch {
+		return undefined;
+	}
 }
 
 /**
@@ -63,6 +72,8 @@ export function ask(env: AsideEnv, level: AsideLevel, question: string, expanded
 	const commands = new Map<string, RanCommand>();
 	// Tool calls started and not ended yet.
 	const running = new Map<string, { name: string; args: unknown }>();
+	// Tool calls shown and not ended yet, from the first streamed arguments on, as in pi's main pane.
+	const pending = new Map<string, Extract<Segment, { kind: "tool" }>>();
 	let toolInfo = new Map<string, ToolInfo>();
 	// Closed mid-answer: calls still running count as done, and no command gets checked.
 	const unsettled = () => [
@@ -91,9 +102,25 @@ export function ask(env: AsideEnv, level: AsideLevel, question: string, expanded
 			await applyModel(session, level.model, levelThinking(level));
 
 			toolInfo = new Map(session.getAllTools().map((t) => [t.name, t]));
+			const toolCall = (id: string, name: string, args: unknown) => {
+				let segment = pending.get(id);
+				if (!segment) {
+					segment = { kind: "tool", text: "", call: env.toolCall(name, id, args, renderersOf(session, name)) };
+					ex.segments.push(segment);
+					pending.set(id, segment);
+				}
+				return segment;
+			};
 			unsubscribe = session.subscribe((ev) => {
 				switch (ev.type) {
 					case "message_update":
+						if (ev.message.role === "assistant") {
+							for (const c of ev.message.content) {
+								if (c.type !== "toolCall") continue;
+								if (pending.has(c.id)) pending.get(c.id)?.call.updateArgs(c.arguments);
+								else toolCall(c.id, c.name, c.arguments);
+							}
+						}
 						switch (ev.assistantMessageEvent.type) {
 							case "text_delta":
 								appendAnswer(ex, "text", ev.assistantMessageEvent.delta);
@@ -101,14 +128,18 @@ export function ask(env: AsideEnv, level: AsideLevel, question: string, expanded
 							case "thinking_delta":
 								appendAnswer(ex, "thinking", ev.assistantMessageEvent.delta);
 								break;
-							default:
-								return;
 						}
 						env.render();
 						break;
 					case "message_end":
 						if (ev.message.role !== "assistant") break;
 						addUsage(level, ev.message.usage);
+						// As pi's main pane: a failed or stopped message fails the calls it was streaming.
+						if (ev.message.stopReason === "aborted" || ev.message.stopReason === "error") {
+							const text = ev.message.stopReason === "aborted" ? "Operation aborted" : ev.message.errorMessage || "Error";
+							for (const { call } of pending.values()) call.updateResult({ content: [{ type: "text", text }], isError: true });
+							pending.clear();
+						} else for (const { call } of pending.values()) call.setArgsComplete();
 						// A stop shows as "(stopped)", not as the provider's error for it.
 						if (ev.message.stopReason === "error" && !controller.signal.aborted) {
 							ex.error ??= ev.message.errorMessage || "request failed";
@@ -117,14 +148,25 @@ export function ask(env: AsideEnv, level: AsideLevel, question: string, expanded
 						break;
 					case "tool_execution_start":
 						running.set(ev.toolCallId, { name: ev.toolName, args: ev.args });
-						ex.toolCalls++;
-						appendAnswer(ex, "text", `\n\n\`${toolCallLine(ev.toolName, ev.args)}\`\n\n`);
 						if (ev.toolName === "bash" && typeof (ev.args as { command?: unknown })?.command === "string") {
 							commands.set(ev.toolCallId, { command: (ev.args as { command: string }).command });
 						}
+						// Nested calls (from code that calls tools) show inside their parent's row, as in pi.
+						if (!ev.parentToolCallId) {
+							const segment = toolCall(ev.toolCallId, ev.toolName, ev.args);
+							segment.text = `\n\n\`${toolCallLine(ev.toolName, ev.args)}\`\n\n`;
+							ex.toolCalls++;
+							segment.call.markExecutionStarted();
+							env.render();
+						}
+						break;
+					case "tool_execution_update":
+						pending.get(ev.toolCallId)?.call.updateResult({ ...ev.partialResult, isError: false }, true);
 						env.render();
 						break;
 					case "tool_execution_end": {
+						pending.get(ev.toolCallId)?.call.updateResult({ ...ev.result, isError: ev.isError, durationMs: ev.durationMs });
+						pending.delete(ev.toolCallId);
 						const ran = commands.get(ev.toolCallId);
 						if (ran) {
 							ran.output = textOf(ev.result?.content);
@@ -133,6 +175,7 @@ export function ask(env: AsideEnv, level: AsideLevel, question: string, expanded
 						const args = running.get(ev.toolCallId)?.args;
 						running.delete(ev.toolCallId);
 						record(changeOf(ev.toolName, args, ev.isError, toolInfo.get(ev.toolName)));
+						env.render();
 						break;
 					}
 				}

@@ -36,7 +36,8 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
   The pane previews your pick and warns when the next question is about something different.
 - **Follow up** in the same aside; it remembers the discussion.
 - **Do things.** An aside has the same tools as the main agent (files, commands, MCP servers,
-  other extensions' tools). Each action shows as one line.
+  other extensions' tools). Each action shows as it does in the main conversation, live progress
+  included (for example a subagent's status while it runs); `ctrl+o` expands or collapses them.
 - **Keep the main agent informed.** When an aside edits files, runs commands that change files
   because you asked for a change, or makes MCP calls that may have changed something, a list of
   them goes down when you close it: at the end of the
@@ -110,7 +111,7 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
   if it matters.
 - **Only in pi's main editor:** pi and extension commands, pasted images, `!`
   shell commands, and typing a follow-up while an answer streams (wait, or `esc` to stop it).
-- **Less detail than the main conversation.** Each action is one line, without output or diffs.
+- **No images in tool output.** A tool result with an image shows without it.
 - **Showing or hiding thinking:** asides start with whatever pi's `ctrl+t` last chose. `ctrl+t` in
   an aside changes only the open asides, until they close: pi's setting and the main conversation
   stay as they were. Clicking a thinking block doesn't show or hide just that one. If an extension

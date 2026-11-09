@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Tool calls show as they do in the main conversation, drawn by each tool's own renderer, with
+  live progress while they run (e.g. a subagent's status), results, and `ctrl+o` to expand.
+
 - `ctrl+s` closes the aside at once; the summary follows in the background, with a footer status
   while it is on its way. If it fails, the whole discussion is sent instead.
 

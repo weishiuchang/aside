@@ -6,6 +6,7 @@
 import { type ExtensionAPI, type ExtensionContext, getAgentDir, type KeybindingsManager, SettingsManager, type Theme } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteProvider, OverlayHandle, TUI } from "@earendil-works/pi-tui";
 import { ask } from "./agent/ask.ts";
+import { toolCallLine } from "./agent/changes.ts";
 import type { AsideEnv } from "./agent/env.ts";
 import { levelSession } from "./agent/session.ts";
 import { sendChanges, sendThread, summarize } from "./agent/handoff.ts";
@@ -18,6 +19,7 @@ import { liveOverlayOptions } from "./ui/layout.ts";
 import { AsidePane } from "./ui/pane.ts";
 import { reflowAround } from "./ui/reflow.ts";
 import { StackView } from "./ui/stack-view.ts";
+import { ToolCall } from "./ui/tool-call.ts";
 
 export class AsideStack {
 	private levels: AsideLevel[] = [];
@@ -54,17 +56,22 @@ export class AsideStack {
 		/** Summaries of aside 1 still being written; they outlive the stack. */
 		toMain: Set<AbortController>,
 	) {
+		const settings = SettingsManager.create(ctx.cwd, getAgentDir(), { projectTrusted: ctx.isProjectTrusted() });
+		this.thinkingHidden = settings.getHideThinkingBlock();
+		const toolOptions = { outputPad: settings.getOutputPad(), imageWidthCells: settings.getImageWidthCells() };
 		this.env = {
 			ctx,
 			pi,
 			toMain,
 			mainTurns: () => this.mainTurns(),
 			parentOf: (level) => this.levels[this.levels.indexOf(level) - 1],
+			toolCall: (name, id, args, renderers) => {
+				if (!this.tui) throw new Error("aside: TUI not ready");
+				const line = toolCallLine(name, args);
+				return new ToolCall(this.tui, name, id, args, renderers, ctx.cwd, toolOptions, () => line);
+			},
 			render: () => this.tui?.requestRender(),
 		};
-		this.thinkingHidden = SettingsManager.create(ctx.cwd, getAgentDir(), {
-			projectTrusted: ctx.isProjectTrusted(),
-		}).getHideThinkingBlock();
 	}
 
 	/** Slash commands work the same at every level; `/model` and `/thinking` change only `level`. */

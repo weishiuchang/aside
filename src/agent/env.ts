@@ -1,9 +1,10 @@
 /** What asking and handing off need from the stack: pi, the main conversation, and other levels. */
 
-import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext, ToolRenderers } from "@earendil-works/pi-coding-agent";
 import type { Part } from "../context/parts.ts";
 import { MESSAGE_TYPE } from "../config.ts";
 import type { AsideLevel } from "../level.ts";
+import type { ToolCall } from "../ui/tool-call.ts";
 
 export interface AsideEnv {
 	ctx: ExtensionContext;
@@ -16,6 +17,8 @@ export interface AsideEnv {
 	mainTurns: () => Part[];
 	/** The level `level` asks about; undefined for level 1. */
 	parentOf: (level: AsideLevel) => AsideLevel | undefined;
+	/** A tool call's view in the thread, drawn with the tool's renderers as pi's main pane draws it. */
+	toolCall: (name: string, id: string, args: unknown, renderers: ToolRenderers | undefined) => ToolCall;
 	/** Request a redraw after state changed. */
 	render: () => void;
 }
