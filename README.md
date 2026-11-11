@@ -40,7 +40,8 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
   use `esc` or `ctrl+d` first: with Vim-style editing, `esc` in insert mode goes to normal mode,
   and only the next `esc` stops an answer.
 - **Do things.** An aside has the same tools as the main agent (files, commands, MCP servers,
-  other extensions' tools). Each action shows as it does in the main conversation, live progress
+  other extensions' tools), including ones you turn on in the main conversation while it is open,
+  from your next question. Each action shows as it does in the main conversation, live progress
   included (for example a subagent's status while it runs); `ctrl+o` expands or collapses them.
 - **Keep the main agent informed.** When an aside edits files, runs commands that change files
   because you asked for a change, or makes MCP calls that may have changed something, a list of
@@ -117,6 +118,8 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
   if it matters.
 - **Only in pi's main editor:** pi and extension commands, pasted images, `!`
   shell commands, and typing a follow-up while an answer streams (wait, or `esc` to stop it).
+- **MCP servers you connect after opening an aside** may be missing from it. Close the asides and
+  open a new one.
 - **No images in tool output.** A tool result with an image shows without it.
 - **Showing or hiding thinking:** asides start with whatever pi's `ctrl+t` last chose. `ctrl+t` in
   an aside changes only the open asides, until they close: pi's setting and the main conversation

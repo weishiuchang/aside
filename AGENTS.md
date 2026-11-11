@@ -64,7 +64,9 @@ point, each told to read this file first and to edit nothing.
 - In-memory session (`src/agent/session.ts`): `bindExtensions({})` before choosing a model from
   `modelRuntime.getAvailable()`; custom instructions via `appendSystemPromptOverride` (the
   `systemPrompt` option drops pi's tool list and rules; `appendSystemPrompt` replaces the user's
-  APPEND_SYSTEM.md).
+  APPEND_SYSTEM.md). No `tools` option: it is an allowlist fixed for the session's life (tools
+  outside it never register); the active tools are set by name from `pi.getActiveTools()` before
+  each question.
 - `session.dispose()` emits no `session_shutdown`; `closeSession` runs each extension's shutdown
   handlers concurrently under a time limit, then disposes, so no extension's timers outlive it.
 

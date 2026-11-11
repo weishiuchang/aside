@@ -9,7 +9,7 @@ import { type AsideLevel, addUsage, appendAnswer, type Exchange, levelThinking, 
 import { type Change, changeOf, toolCallLine } from "./changes.ts";
 import { commandChanges, type RanCommand, unchecked } from "./command-check.ts";
 import type { AsideEnv } from "./env.ts";
-import { applyModel, levelSession } from "./session.ts";
+import { applyModel, applyTools, levelSession } from "./session.ts";
 
 /** Context sent with a level's first question. */
 function firstContext(env: AsideEnv, level: AsideLevel, parts: Part[], lo: number, hi: number): string[] {
@@ -97,9 +97,10 @@ export function ask(env: AsideEnv, level: AsideLevel, question: string, expanded
 	void (async () => {
 		let unsubscribe: (() => void) | undefined;
 		try {
-			const session = await levelSession(env.pi, env.ctx.cwd, level);
+			const session = await levelSession(env.ctx.cwd, level);
 			if (controller.signal.aborted) throw new Error("aborted");
 			await applyModel(session, level.model, levelThinking(level));
+			applyTools(session, env.pi);
 
 			toolInfo = new Map(session.getAllTools().map((t) => [t.name, t]));
 			const toolCall = (id: string, name: string, args: unknown) => {

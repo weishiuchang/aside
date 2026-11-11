@@ -175,7 +175,7 @@ export class AsideStack {
 		// After the pane is drawn, so the first frame is not held up.
 		setTimeout(() => {
 			if (this.levels.includes(level)) {
-				void levelSession(this.env.pi, this.ctx.cwd, level)
+				void levelSession(this.ctx.cwd, level)
 					.then((session) => this.readTransformers(session))
 					.catch(() => {});
 			}

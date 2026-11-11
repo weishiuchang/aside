@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Asides use the main agent's tools as they are when you ask, not as they were when the aside
+  opened, so tools turned on later (e.g. from an MCP server that finished connecting) are there.
+
 - Text follows extensions that change how pi draws Markdown: transformers, and components they
   redraw (e.g. pi-code-copy's "✓ Copied").
 - The question box uses your editor extensions, as pi's main input box does (e.g. Vim-style

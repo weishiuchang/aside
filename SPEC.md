@@ -148,7 +148,10 @@ and bottom border.
   agent may be working at the same time, to make only requested changes, that changes are listed
   for the main agent, and to ask before a call that could change or delete data outside the
   working directory unless the user asked for exactly that.
-- **Tools**: the main agent's active tools plus read, grep, find, ls, bash, edit, write. Each call
+- **Tools**: read, grep, find, ls, bash, edit, write, plus the main agent's active tools as they
+  are when each question is sent, so tools turned on or off in the main conversation apply from an
+  open aside's next question. A tool the aside's own extensions have not registered (e.g. from an
+  MCP server connected only in the main conversation after the aside opened) is left out. Each call
   shows in the thread as pi's main pane shows it: pi's tool component with the tool's own
   renderers (an extension's, or pi's built-in ones), from its first streamed arguments on, with
   live progress from the tool's partial results, its result, and pi's tool-output expansion
@@ -373,7 +376,7 @@ Only where pi enables it (fullscreen mode, the default).
 ## Platform notes
 
 Facts about pi, checked against **pi 1.3.0**; built-in command names, template argument
-substitution, tool info, tool events, and the tool component against **pi 1.5.0**. Hints, not requirements; re-check on upgrade.
+substitution, tool info, tool events, the tool component, and session tool selection against **pi 1.5.0**. Hints, not requirements; re-check on upgrade.
 
 - Overlays: pi keeps an overlay's options object and re-reads its fields every render, so computed
   fields let one overlay change size and position live. Not a documented contract; the documented
@@ -414,7 +417,9 @@ substitution, tool info, tool events, and the tool component against **pi 1.5.0*
     editing the text appended to pi's system prompt (after the base prompt, before context files
     and skills). Passing appended text or a replacement prompt directly drops the user's prompt
     files or pi's tool list.
-  - An in-memory session manager keeps it off disk; a tool allowlist picks tools by name.
+  - An in-memory session manager keeps it off disk. A `tools` allowlist is fixed for the session's
+    life and tools outside it are never registered; setting the active tools by name (registered
+    names only) takes effect on the next turn.
   - Binding extensions with no UI starts them; only then can the model be set, matched by provider
     and id among the session's available models. Create and bind take a fraction of a second.
   - Prompting with template expansion off sends text as is, without running extension commands.

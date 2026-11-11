@@ -1,7 +1,7 @@
 /**
  * Each aside answers through its own in-memory pi agent session. It loads the user's extensions
- * (except this one) and has the main agent's active tools plus pi's file and shell tools, so asides
- * get MCP servers and every extension's tools and hooks.
+ * (except this one), so asides get MCP servers and every extension's tools and hooks. Every question
+ * uses the main agent's active tools at that moment, plus pi's file and shell tools.
  */
 
 import { realpathSync } from "node:fs";
@@ -36,7 +36,7 @@ const realPath = (path: string) => {
 /** This extension's root directory (two up from this file), to leave it out of aside sessions. */
 const OWN_ROOT = resolve(dirname(realPath(fileURLToPath(import.meta.url))), "../..") + sep;
 
-async function createAsideSession(pi: ExtensionAPI, cwd: string, depth: number): Promise<AgentSession> {
+async function createAsideSession(cwd: string, depth: number): Promise<AgentSession> {
 	const agentDir = getAgentDir();
 	const settingsManager = SettingsManager.create(cwd, agentDir);
 	const resourceLoader = new DefaultResourceLoader({
@@ -59,7 +59,9 @@ async function createAsideSession(pi: ExtensionAPI, cwd: string, depth: number):
 		settingsManager,
 		resourceLoader,
 		sessionManager: SessionManager.inMemory(cwd),
-		tools: [...new Set([...BASE_TOOLS, ...pi.getActiveTools()])],
+		// No `tools` allowlist: pi fixes it for the session's life and never registers a tool outside
+		// it, so tools the main agent turns on later would be missing. applyTools picks the active
+		// tools before each question instead.
 	});
 	// Starts the extensions (MCP clients, providers) without UI: the aside owns the screen.
 	await session.bindExtensions({});
@@ -116,9 +118,9 @@ export async function closeSession(session: AgentSession) {
  * The level's session, started on first use. Called when a level opens so the first answer does
  * not wait for it; a failed start is retried by the next call.
  */
-export function levelSession(pi: ExtensionAPI, cwd: string, level: AsideLevel): Promise<AgentSession> {
+export function levelSession(cwd: string, level: AsideLevel): Promise<AgentSession> {
 	if (!level.session) {
-		const session = createAsideSession(pi, cwd, level.depth);
+		const session = createAsideSession(cwd, level.depth);
 		level.session = session;
 		session.catch(() => {
 			if (level.session === session) level.session = undefined;
@@ -136,4 +138,13 @@ export async function applyModel(session: AgentSession, model: Model, thinking: 
 		await session.setModel(match);
 	}
 	session.setThinkingLevel(clampThinkingLevel(model, thinking));
+}
+
+/**
+ * Make the session's active tools the main agent's active tools now, plus pi's file and shell
+ * tools, so tools turned on or off in the main conversation apply from the next question. Names
+ * the session has not registered are left out.
+ */
+export function applyTools(session: AgentSession, pi: ExtensionAPI) {
+	session.setActiveToolsByName([...new Set([...BASE_TOOLS, ...pi.getActiveTools()])]);
 }
