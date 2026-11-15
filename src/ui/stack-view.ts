@@ -158,14 +158,17 @@ export class StackView implements Component, Focusable {
 		if (collapsed === 0) return top?.handleMouse(event);
 
 		const pos = orient === "side" ? event.x : event.y;
-		// Collapsed levels ignore the mouse on purpose: a stray click must not close asides.
-		if (pos < collapsedSize) return { handled: true };
+		// Collapsed levels take clicks and the wheel and do nothing with them; presses and drags go on
+		// to pi's text selection, as everywhere else in the overlay.
+		if (pos < collapsedSize) {
+			return event.type === "click" || event.type === "wheel" ? { handled: true } : undefined;
+		}
 		const offset = pos - collapsedSize;
 		const inParent = offset < parentSize;
 		const target = inParent ? panes[panes.length - 2] : top;
 		if (!target) return undefined;
 		const local = inParent ? offset : offset - parentSize;
-		const r = target.handleMouse(orient === "side" ? { ...event, x: local } : { ...event, y: local });
-		return r ?? { handled: true };
+		// Events the pane does not use go on to pi's text selection, as at depth 1.
+		return target.handleMouse(orient === "side" ? { ...event, x: local } : { ...event, y: local });
 	}
 }

@@ -61,7 +61,9 @@ point, each told to read this file first and to edit nothing.
   returns. An `HStack` renders every entry to measure its height, so pi's root goes in wrapped as
   empty-rendering with its layout node (`Symbol.for("@earendil-works/pi-tui/layout-node")`, not
   exported). `regular` mode has no layout tree. pi refuses TUI mode switches while overlays are open.
-- In-memory session (`src/agent/session.ts`): `bindExtensions({})` before choosing a model from
+- In-memory session (`src/agent/session.ts`): SDK sessions lack the CLI's built-in codemode, tool
+  search, and MCP extensions; they are added as `builtin`/`replaceable` extension factories, as the
+  CLI declares them. `bindExtensions({})` before choosing a model from
   `modelRuntime.getAvailable()`; custom instructions via `appendSystemPromptOverride` (the
   `systemPrompt` option drops pi's tool list and rules; `appendSystemPrompt` replaces the user's
   APPEND_SYSTEM.md). No `tools` option: it is an allowlist fixed for the session's life (tools

@@ -1,7 +1,8 @@
 /**
  * Each aside answers through its own in-memory pi agent session. It loads the user's extensions
- * (except this one), so asides get MCP servers and every extension's tools and hooks. Every question
- * uses the main agent's active tools at that moment, plus pi's file and shell tools.
+ * (except this one) and pi's built-in codemode, tool search, and MCP extensions, so asides get MCP
+ * servers and every extension's tools and hooks. Every question uses the main agent's active tools
+ * at that moment, plus pi's file and shell tools.
  */
 
 import { realpathSync } from "node:fs";
@@ -11,10 +12,14 @@ import { clampThinkingLevel } from "@earendil-works/pi-ai";
 import {
 	type AgentSession,
 	createAgentSession,
+	createCodemodeExtension,
+	createMcpExtension,
+	createToolSearchExtension,
 	DefaultResourceLoader,
 	type Extension,
 	type ExtensionAPI,
 	getAgentDir,
+	type InlineExtension,
 	SessionManager,
 	SettingsManager,
 } from "@earendil-works/pi-coding-agent";
@@ -36,6 +41,18 @@ const realPath = (path: string) => {
 /** This extension's root directory (two up from this file), to leave it out of aside sessions. */
 const OWN_ROOT = resolve(dirname(realPath(fileURLToPath(import.meta.url))), "../..") + sep;
 
+/**
+ * The CLI loads codemode, tool search, and MCP as built-in extensions; SDK sessions only get them
+ * when added. Declared as the CLI declares them, so they follow the user's settings the same way
+ * (`-builtin:mcp` disables one, an installed extension registering `/mcp` or `codemode` replaces
+ * it, `codemode.mode` applies).
+ */
+const BUILTIN_EXTENSIONS: InlineExtension[] = [
+	{ name: "codemode", factory: createCodemodeExtension(), replaceable: true, builtin: true },
+	{ name: "tool-search", factory: createToolSearchExtension(), replaceable: true, builtin: true },
+	{ name: "mcp", factory: createMcpExtension(), replaceable: true, builtin: true },
+];
+
 async function createAsideSession(cwd: string, depth: number): Promise<AgentSession> {
 	const agentDir = getAgentDir();
 	const settingsManager = SettingsManager.create(cwd, agentDir);
@@ -43,6 +60,7 @@ async function createAsideSession(cwd: string, depth: number): Promise<AgentSess
 		cwd,
 		agentDir,
 		settingsManager,
+		extensionFactories: BUILTIN_EXTENSIONS,
 		// Keeps pi's prompt (tool list, guidelines, rules, the user's SYSTEM.md and APPEND_SYSTEM.md)
 		// and adds the aside's instructions before the context files and skills.
 		appendSystemPromptOverride: (base) => [...base, asideInstructions(depth)],
@@ -63,7 +81,8 @@ async function createAsideSession(cwd: string, depth: number): Promise<AgentSess
 		// it, so tools the main agent turns on later would be missing. applyTools picks the active
 		// tools before each question instead.
 	});
-	// Starts the extensions (MCP clients, providers) without UI: the aside owns the screen.
+	// Starts the extensions without UI (the aside owns the screen); `session_start` connects the MCP
+	// servers in the background.
 	await session.bindExtensions({});
 	return session;
 }

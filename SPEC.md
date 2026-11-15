@@ -138,8 +138,10 @@ and bottom border.
   and the aside waits at most 3 seconds before disposing. Reason: an aside must not crash or hang
   pi because of an extension, so one extension's failing or stuck handler must not keep the others
   from cleaning up (a timer left using a disposed session's ctx kills pi). It
-  loads the user's extensions (except aside), skills, and context files, so it can do whatever the
-  main agent can, MCP included. Its system prompt is pi's own plus the aside's instructions.
+  loads the user's extensions (except aside), skills, and context files, plus pi's built-in
+  codemode, tool search, and MCP extensions declared as pi's CLI declares them (so settings that
+  disable or replace them apply as in the main conversation), so it can do whatever the main agent
+  can, MCP included. Each aside connects its own MCP servers when its session starts. Its system prompt is pi's own plus the aside's instructions.
 - **Follow-ups** continue the session: full context with the first question, then only the
   question, plus the new focus and a note when the selection changed.
 - **Instructions** tell the model what an aside is, that answers are not added to the main
@@ -340,7 +342,9 @@ Only where pi enables it (fullscreen mode, the default).
 
 - Click a part in the top aside to select it; shift+click extends the range.
 - The wheel scrolls the thread under the pointer, including the previous aside.
-- Collapsed levels consume clicks and do nothing; a stray click never closes asides.
+- Dragging selects text with pi's own selection, at every depth: the overlay passes on every
+  event it does not use.
+- Collapsed levels consume clicks and the wheel and do nothing; a stray click never closes asides.
 
 ## Shipped documentation
 
@@ -417,6 +421,11 @@ substitution, tool info, tool events, the tool component, and session tool selec
     editing the text appended to pi's system prompt (after the base prompt, before context files
     and skills). Passing appended text or a replacement prompt directly drops the user's prompt
     files or pi's tool list.
+  - The CLI loads codemode, tool search, and MCP as built-in extensions; SDK sessions get them only
+    from the loader's extension factories (pi exports their factories). Declared with `builtin`
+    and `replaceable`, as the CLI does, `-builtin:<name>` disables one and an extension registering
+    the same tool or command replaces it. The MCP extension connects its servers on
+    `session_start` and closes them on `session_shutdown`.
   - An in-memory session manager keeps it off disk. A `tools` allowlist is fixed for the session's
     life and tools outside it are never registered; setting the active tools by name (registered
     names only) takes effect on the next turn.
@@ -430,6 +439,9 @@ substitution, tool info, tool events, the tool component, and session tool selec
     extensions' renderer lookups over the tool's definition; built-in definitions include pi's
     renderers. Renderers can redraw themselves (a callback that invalidates and requests a render),
     so the component's lines can change between session events.
+- A mouse event an overlay hits but does not handle goes to pi's text selection, never to the
+  layout under the overlay; pi synthesizes a click (sent to the overlay) when a press is released
+  without moving.
 - A session's tool info names a tool's namespace (`mcp__<server>` for pi's MCP tools), its declared
   annotations (e.g. read-only), and, for tools that reach other tools (codemode, tool search), a
   `reachesTools` function. Tools proxied by an extension without these look like plain tools.
