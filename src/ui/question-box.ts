@@ -22,7 +22,6 @@ type Editor = EditorComponent & {
 	onEscape?: () => void;
 	onCtrlD?: () => void;
 	actionHandlers?: Map<AppKeybinding, () => void>;
-	disableSubmit?: boolean;
 	isShowingAutocomplete?: () => boolean;
 };
 
@@ -41,6 +40,10 @@ const history: string[] = [];
 export interface BoxHandlers {
 	/** Enter, with the text the editor cleared. */
 	submit: (text: string) => void;
+	/** pi's follow-up key (`alt+enter` unless rebound), with the text it cleared from the editor. */
+	followUp: (text: string) => void;
+	/** pi's key to put queued messages back into the editor (`alt+up` unless rebound). */
+	dequeue: () => void;
 	change: (text: string) => void;
 	/** esc while no autocomplete list is open. */
 	escape: () => void;
@@ -107,6 +110,14 @@ export class QuestionBox {
 			editor.onCtrlD ??= h.exit;
 			editor.actionHandlers.set("app.tools.expand", h.toggleExpanded);
 			editor.actionHandlers.set("app.thinking.toggle", h.toggleThinking);
+			// As pi's follow-up key: the editor's text goes, unless there is none.
+			editor.actionHandlers.set("app.message.followUp", () => {
+				const text = (editor.getExpandedText?.() ?? editor.getText()).trim();
+				if (!text) return;
+				editor.setText("");
+				h.followUp(text);
+			});
+			editor.actionHandlers.set("app.message.dequeue", h.dequeue);
 		}
 	}
 
@@ -138,13 +149,6 @@ export class QuestionBox {
 		this._focused = v;
 		this.guard((e) => {
 			e.focused = v;
-		}, undefined);
-	}
-
-	/** Enter does nothing while set (an answer is streaming), as `disableSubmit` in pi's editor. */
-	set submitDisabled(v: boolean) {
-		this.guard((e) => {
-			if ("disableSubmit" in e) e.disableSubmit = v;
 		}, undefined);
 	}
 

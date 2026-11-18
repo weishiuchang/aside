@@ -14,7 +14,7 @@ import {
 	type Theme,
 } from "@earendil-works/pi-coding-agent";
 import type { AutocompleteProvider, OverlayHandle, TUI } from "@earendil-works/pi-tui";
-import { ask } from "./agent/ask.ts";
+import { ask, enqueue } from "./agent/ask.ts";
 import { toolCallLine } from "./agent/changes.ts";
 import type { AsideEnv } from "./agent/env.ts";
 import { levelSession } from "./agent/session.ts";
@@ -22,7 +22,17 @@ import { sendChanges, sendThread, summarize } from "./agent/handoff.ts";
 import { asideAutocomplete, type CommandHost, runCommand } from "./commands.ts";
 import { AUTOCOMPLETE_MAX_VISIBLE, MAX_DEPTH } from "./config.ts";
 import { type Part, partsFromThread, turnsFromBranch } from "./context/parts.ts";
-import { type AsideLevel, createLevel, discardLevel, isBusy, levelThinking, usageLabel } from "./level.ts";
+import {
+	type AsideLevel,
+	createLevel,
+	discardLevel,
+	isBusy,
+	levelThinking,
+	type Queued,
+	selectedRange,
+	syncSelection,
+	usageLabel,
+} from "./level.ts";
 import type { Model } from "./types.ts";
 import { liveOverlayOptions } from "./ui/layout.ts";
 import { AsidePane } from "./ui/pane.ts";
@@ -130,12 +140,20 @@ export class AsideStack {
 		this.handle?.focus();
 	}
 
-	/** Ask `text` at `level`, or run it as a slash command. Returns false to keep it in the box. */
-	private submit(level: AsideLevel, text: string): boolean {
-		if (isBusy(level)) return false;
+	/**
+	 * Run `text` at `level` as a slash command, or ask it about the selection. While the level is
+	 * busy a question is queued as `mode`, as pi's editor queues a prompt. Returns false to keep the
+	 * text in the box.
+	 */
+	private submit(level: AsideLevel, text: string, mode: Queued["mode"]): boolean {
 		const result = runCommand(text, this.commandHost(level));
 		if (!result || result.kind === "ask") {
-			ask(this.env, level, text, result?.prompt);
+			const parts = level.parts();
+			if (!parts.length) return false;
+			syncSelection(level, parts.length);
+			const question = { text, expanded: result?.prompt ?? text, ...selectedRange(level) };
+			if (isBusy(level)) enqueue(this.env, level, mode, question);
+			else ask(this.env, level, question);
 			return true;
 		}
 		if (result.notice) level.notice = result.notice;
@@ -148,7 +166,7 @@ export class AsideStack {
 		if (!this.tui || !this.theme || !this.keybindings) throw new Error("aside: TUI not ready");
 		this.panes.push(
 			new AsidePane(this.tui, this.theme, this.keybindings, level, {
-				submit: (text) => this.submit(level, text),
+				submit: (text, mode) => this.submit(level, text, mode),
 				autocomplete: asideAutocomplete(this.commandHost(level), this.mainAutocomplete),
 				autocompleteMaxVisible: this.env.pi.getSettings().autocompleteMaxVisible ?? AUTOCOMPLETE_MAX_VISIBLE,
 				markdownTransformers: () => this.transformers,

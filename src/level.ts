@@ -69,6 +69,31 @@ export function answerVersion(ex: Exchange): string {
 	return `${ex.segments.length}:${ex.segments[ex.segments.length - 1]?.text.length ?? 0}:${ex.toolCalls}`;
 }
 
+/** A question typed in the box, and the selection it asks about. */
+export interface Question {
+	/** What was typed, which the thread shows. */
+	text: string;
+	/** What the model gets: `text` with a skill or prompt template expanded. */
+	expanded: string;
+	lo: number;
+	hi: number;
+}
+
+/**
+ * A question typed while the level was busy, queued as pi's main pane queues a prompt: a steer
+ * (enter) goes into the running answer after its current tool calls, a follow-up (pi's follow-up
+ * key) is asked once the answer ends.
+ */
+export interface Queued {
+	mode: "steer" | "followUp";
+	question: Question;
+	/**
+	 * Set once a steer is in the answering session's queue: the prompt it went in as, what building
+	 * it took from the level (its notes, the focus before it), and the call that queued it.
+	 */
+	sent?: { prompt: string; notes: string[]; focus: string | undefined; queued: Promise<void> };
+}
+
 export interface UsageTotals {
 	input: number;
 	output: number;
@@ -114,9 +139,16 @@ export interface AsideLevel {
 	changes: Change[];
 	/**
 	 * The answer or the check of its commands in flight. `unsettled` is what it may have changed that
-	 * is not in `changes` yet, for when the aside closes before it ends.
+	 * is not in `changes` yet, for when the aside closes before it ends. `session` is the answering
+	 * session once its run started, which steers go into.
 	 */
-	task?: { kind: "answer" | "check"; controller: AbortController; unsettled?: () => Change[] };
+	task?: { kind: "answer" | "check"; controller: AbortController; unsettled?: () => Change[]; session?: AgentSession };
+	/**
+	 * Questions typed while the level was busy, in the order typed. A steer goes into the answer once
+	 * it streams and no summary of a nested aside is on its way; anything else waits here until the
+	 * level is free and is then asked, the first one first.
+	 */
+	queue: Queued[];
 	/**
 	 * Summaries of nested asides closed on this level, still being written; each arrives as an entry
 	 * in the thread. Removed from here when the level closes, so they send nothing.
@@ -151,6 +183,7 @@ export function createLevel(depth: number, parts: () => Part[], model: Model, th
 		windowStart: 0,
 		follow: true,
 		pendingNotes: [],
+		queue: [],
 		changes: [],
 		incoming: new Set(),
 		discarded: false,
@@ -166,6 +199,33 @@ export function levelThinking(level: AsideLevel): ThinkingLevel {
 /** Whether the level is answering, checking commands, or waiting for a nested aside's summary. */
 export function isBusy(level: AsideLevel): boolean {
 	return !!level.task || level.incoming.size > 0;
+}
+
+/**
+ * Steers that left the answering session's queue undelivered: what building them took goes back to
+ * the level, so they can be built again. Steers are delivered in the order sent, so these are the
+ * last ones sent, and the focus before the first of them is the focus the model last got.
+ */
+export function unsend(level: AsideLevel, entries: Queued[]) {
+	const sent = entries.flatMap((q) => (q.sent ? [q.sent] : []));
+	if (!sent.length) return;
+	level.sentFocus = sent[0].focus;
+	level.pendingNotes = [...sent.flatMap((s) => s.notes), ...level.pendingNotes];
+	for (const q of entries) q.sent = undefined;
+}
+
+/**
+ * Take every queued question back out of the queue (and the answering session's queue), as pi's
+ * main pane does to put them back into its editor: steers first, then follow-ups, as pi lists them.
+ */
+export function takeQueue(level: AsideLevel): string[] {
+	const queue = level.queue;
+	level.queue = [];
+	if (queue.some((q) => q.sent)) {
+		level.task?.session?.clearQueue();
+		unsend(level, queue);
+	}
+	return [...queue.filter((q) => q.mode === "steer"), ...queue.filter((q) => q.mode === "followUp")].map((q) => q.question.text);
 }
 
 /** Stop everything streaming at the level (pi's interrupt key); stopped summaries still arrive, as whole threads. */

@@ -32,7 +32,7 @@ export function commandCheckPrompt(): string {
 	return `An AI assistant answered a user's question and ran shell commands while doing so. Another agent works on the same files and must be told about changes, but only real ones. Decide which commands to report.
 
 Report a command only when both hold:
-1. The user asked for a change: QUESTION (read with EARLIER_QUESTIONS, e.g. "yes, do it") asks to edit, fix, create, delete, move, install, commit, or otherwise change something. Questions, investigations, explanations, and reviews do not ask for changes, even if the assistant changed something anyway.
+1. The user asked for a change: QUESTION (the question, then any messages the user added while it was answered; read with EARLIER_QUESTIONS, e.g. "yes, do it") asks to edit, fix, create, delete, move, install, commit, or otherwise change something. Questions, investigations, explanations, and reviews do not ask for changes, even if the assistant changed something anyway.
 2. The command, judging by what it does, its status, and its output, actually modified, created, moved, or deleted files, or was destructive (git checkout, reset, stash, commit; killing processes; changing system state). Reading, searching, listing, inspecting, and printing are not changes, and neither are scratch output nobody relies on (temp files, caches, build output) unless the user asked for it.
 
 Output only JSON, no prose: {"requested": true or false, "changed": [{"command": <n>, "effect": "<what changed, naming files, a few words>"}]}`;

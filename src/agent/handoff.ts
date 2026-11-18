@@ -7,6 +7,7 @@
 
 import { textOf } from "../context/text.ts";
 import { type AsideLevel, addUsage, answerText, type Handoff, handoffTitle, levelThinking, type SentDown } from "../level.ts";
+import { drainQueue } from "./ask.ts";
 import { changesNote } from "./changes.ts";
 import { type AsideEnv, sendToMain, showMainStatus } from "./env.ts";
 import { summaryPrompt } from "./prompts.ts";
@@ -171,6 +172,8 @@ export function summarize(env: AsideEnv, level: AsideLevel, close: () => void) {
 		} catch (err) {
 			env.ctx.ui.notify(`Sending the summary of aside ${out.depth} failed: ${errorText(err)}`, "error");
 		}
+		// Questions queued while it was on its way go now, with it.
+		if (out.to) drainQueue(env, out.to);
 		env.render();
 	})();
 }

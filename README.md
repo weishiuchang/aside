@@ -35,6 +35,10 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 - **Pick what to ask about** with `shift+↑`/`shift+↓` while you type.
   The pane previews your pick and warns when the next question is about something different.
 - **Follow up** in the same aside; it remembers the discussion.
+- **Keep typing while it answers**, as in pi's editor: `enter` steers the answer (the model reads
+  your message after what it is doing now), `alt+enter` queues a follow-up for when it is done, and
+  `alt+up` puts queued messages back into the question box to edit. Queued messages show above the
+  question box until the model gets them.
 - **Type the way you do in pi.** The question box uses your editor extensions too (for example
   Vim-style editing with its mode label, or saved prompt history on `↑`). Such an extension can
   use `esc` or `ctrl+d` first: with Vim-style editing, `esc` in insert mode goes to normal mode,
@@ -79,13 +83,15 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 | Inside an aside | |
 |---|---|
 | `shift+↑` / `shift+↓` | Pick an earlier or later turn |
-| `enter` | Ask |
+| `enter` | Ask; while an answer streams, steer it (same as in pi) |
+| `alt+enter` | While an answer streams, queue a follow-up for when it is done (same as in pi) |
+| `alt+up` | Put queued messages back into the question box (same as in pi) |
 | `ctrl+s` | Close and send a summary to the level below (it follows a few seconds later) |
 | `ctrl+shift+s` | Send the whole discussion, as it is, to the level below and close |
 | `ctrl+shift+a` or `alt+a` | Open an aside about this aside |
 | `ctrl+o` | Expand or collapse what was sent down from an aside above (same as in pi) |
 | `ctrl+t` | Show or hide thinking in the asides (same key as in pi) |
-| `esc` | Stop the answer, or the summary coming from an aside above (never closes the aside) |
+| `esc` | Stop the answer, or the summary coming from an aside above, putting queued messages back into the question box (never closes the aside) |
 | `ctrl+d` (question box empty) | Close the aside right away, dropping any answer or summary still coming (same key that exits pi) |
 | `pageUp` / `pageDown`, mouse wheel | Scroll the answers |
 | `shift+enter` or `ctrl+j` | New line (or type `\` before `enter`) |
@@ -116,8 +122,11 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
   change and the model thinks it changed files or was destructive. Changes the aside made without
   being asked aren't listed, and the model can misjudge a command; say so in the summary you send
   if it matters.
-- **Only in pi's main editor:** pi and extension commands, pasted images, `!`
-  shell commands, and typing a follow-up while an answer streams (wait, or `esc` to stop it).
+- **Only in pi's main editor:** pi and extension commands, pasted images, and `!` shell commands.
+- **Follow-ups go one at a time, after the check.** A follow-up queued with `alt+enter` is asked
+  once the answer ends and the aside has finished "Checking what the commands changed…", one per
+  answer, even if pi's `followUpMode` setting is `all`.
+- **Closing an aside drops its queued messages.** Press `alt+up` first to get them back.
 - **MCP servers you connect after opening an aside** may be missing from it. Close the asides and
   open a new one.
 - **No images in tool output.** A tool result with an image shows without it.
@@ -133,8 +142,9 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 - **A summary takes a few seconds to arrive.** `ctrl+s` closes the aside at once; pi's footer says
   "aside: summarizing…" until the summary lands. If you send a prompt before then, the agent gets
   the summary with your next one, so wait for the footer to clear when the prompt depends on it. If
-  the summary fails, the whole discussion is sent instead. In an aside below, you can't ask until
-  the summary from the aside above has arrived; `esc` stops it and sends the whole discussion.
+  the summary fails, the whole discussion is sent instead. In an aside below, what you ask before
+  the summary from the aside above has arrived waits for it and then goes with it; `esc` stops the
+  summary and sends the whole discussion.
   Quitting pi or switching sessions first drops it.
 - **Each aside has its own model and thinking level.** A new aside starts with the settings of
   whatever it was opened from (the main conversation, or the aside below) and keeps them: later
@@ -150,7 +160,8 @@ A one-off question works too: ask it, then close the aside with `ctrl+d`.
 
 ### Terminal setup
 
-- `alt+a` needs your terminal to send Option/Alt as Meta (macOS terminals usually don't by default).
+- `alt+a`, `alt+enter`, and `alt+up` need your terminal to send Option/Alt as Meta (macOS
+  terminals usually don't by default).
 - In tmux, `ctrl+shift+a`, `ctrl+shift+s`, and `shift+enter` need `set -g extended-keys on` and
   `set -g extended-keys-format csi-u` in your tmux config.
 - `/aside` and `ctrl+j` always work.

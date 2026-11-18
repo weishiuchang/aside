@@ -89,12 +89,15 @@ Top to bottom:
    document. When the pane's width changes (another aside opens or closes, the window resizes),
    the line at the top stays at the top unless the thread follows the end. The header shows counts outside the window ("↑ 2 earlier · ↓ 1 newer") and, when the
    selection differs from the last question's, warns "next question → turns 2–4".
-4. **Question box** (below).
-5. **Key hints** for aside-specific keys only (selection, nested aside, sending down,
+4. **Queued questions**, only while something is queued, listed as pi lists queued messages above
+   its editor: one row each, steers ("Steering: …") then follow-ups ("Follow-up: …"), then, in
+   the top aside, "↳ alt+up to edit all queued messages" naming pi's dequeue key.
+5. **Question box** (below).
+6. **Key hints** for aside-specific keys only (selection, nested aside, sending down,
    expand or collapse once the thread has something a nested aside sent down, `esc` to stop while
    streaming, pi's exit key to close), at most two lines. The nested-aside hint
    disappears at the depth limit, and the `esc` hint hides while the autocomplete list is open.
-6. **Bottom border**: model, thinking level, and this aside's usage (its answers, checks, and the
+7. **Bottom border**: model, thinking level, and this aside's usage (its answers, checks, and the
    summaries of nested asides closed on it) in pi's footer notation, cost
    first so a narrow border keeps it. Aside usage is not in pi's totals.
 
@@ -105,13 +108,18 @@ and bottom border.
 
 - `shift+↑` / `shift+↓`: select the previous or next single part.
 - The latest part is selected on open; new parts move the selection only if it was on the latest.
-- `enter`: ask (or run the slash command). `esc`: stop a streaming answer, command check, or summary
-  of a nested aside, and nothing
+- `enter`: ask (or run the slash command); while the aside is busy, queue the question as a steer
+  (see [Queued questions](#asking)). pi's follow-up key (`alt+enter` unless rebound): queue it as
+  a follow-up while the aside is busy, ask it otherwise, as in pi. pi's dequeue key (`alt+up`
+  unless rebound): put every queued question back into the question box, with pi's notices
+  ("Restored 2 queued messages to editor", "No queued messages to restore").
+  `esc`: put queued questions back into the box, then stop a streaming answer, command check, or
+  summary of a nested aside, and nothing
   else, as in pi: it never closes an aside, so pressing it repeatedly to stop an answer is safe.
   pi's exit key (`ctrl+d` unless rebound) with an empty question box closes the top aside at once,
   mirroring pi's exit-when-empty; with text it deletes forward as in pi. Anything streaming (answer,
-  command check, summary of a nested aside) is stopped and its result dropped without waiting:
-  closing says the user no longer wants it.
+  command check, summary of a nested aside) is stopped and its result dropped without waiting, and
+  queued questions are dropped: closing says the user no longer wants them.
   `ctrl+shift+a` / `alt+a`: open a nested aside. `ctrl+s`: summarize down and
   close. `ctrl+shift+s`: send the whole thread down and close. pi's expand key (`ctrl+o` unless
   rebound): expand or collapse tool calls and what nested asides sent down. pi's thinking toggle (`ctrl+t` unless
@@ -144,6 +152,24 @@ and bottom border.
   can, MCP included. Each aside connects its own MCP servers when its session starts. Its system prompt is pi's own plus the aside's instructions.
 - **Follow-ups** continue the session: full context with the first question, then only the
   question, plus the new focus and a note when the selection changed.
+- **Queued questions.** While the aside is busy (answering, checking commands, or waiting for a
+  nested aside's summary), a question is queued, as pi's editor queues a prompt while the agent
+  works, and is asked about the selection it was typed with. Slash commands still run at once.
+  - A **steer** (`enter`) goes into the running answer and reaches the model after its current
+    tool calls, as pi delivers steering (pi's `steeringMode` applies). When the model gets it, the
+    thread shows it as a question of its own and the answer goes on under it, so one answer can
+    cover several questions. While no answer is running (its session still starting, the command
+    check), it waits; while a nested aside's summary is on its way, it waits for the summary so it
+    carries it.
+  - A **follow-up** (pi's follow-up key) is asked once the answer and its command check end.
+    Deviation: pi hands follow-ups to the running answer, which takes them when it would stop (per
+    pi's `followUpMode`). A message queued there is built when it is typed, and steers typed after
+    it reach the model first, so a steer with another selection would leave the follow-up's focus
+    note wrong; asked as the next question, a follow-up is built when it is sent.
+  - When the aside is free and questions are waiting, the first one typed is asked; waiting
+    steers go into its answer, waiting follow-ups wait for it to end.
+  - `esc` and pi's dequeue key put every queued question back into the box, steers first, before
+    any text already there, as pi does. Closing the aside drops them.
 - **Instructions** tell the model what an aside is, that answers are not added to the main
   conversation, which parts are focus and background, to answer concisely in Markdown, quote
   specifics when useful, and say so rather than guess. Also that its changes are real, the main
@@ -177,8 +203,8 @@ and bottom border.
   whole thread sent down does not repeat a nested aside's list inside it. The list has two sections:
   - **Files and commands**: files edited or written (not failed edits), and shell commands judged
     by intent: when an answer that ran commands ends (stopped ones too), one model call with the
-    aside's model, without thinking, gets the level's questions, the answer, and each command with its
-    status and output, and lists a command only when the user asked for a change and the command
+    aside's model, without thinking, gets the level's earlier questions, the answer's questions (the
+    one asked and every steer it took), the answer, and each command with its status and output, and lists a command only when the user asked for a change and the command
     modified, created, moved, or deleted files or was destructive. Lookups, and changes the user did
     not ask for, are left out. The pane shows "Checking what the commands changed…" meanwhile;
     nothing else starts on that aside until it ends, so a handoff always has the verdict. Stopped
@@ -206,8 +232,9 @@ and bottom border.
   conversation's current ones when it opens (never pi's default); a nested aside copies the aside
   below it when it opens. After that nothing follows anything: changes in the main conversation or
   in another aside never reach it, and only `/model` and `/thinking` in that aside change it.
-  Thinking is clamped to the model. The model is applied to the session before every question; a
-  model the session cannot use is an error for that exchange.
+  Thinking is clamped to the model. The model is applied to the session before every question that
+  starts an answer (a steer goes with the answer it joins); a model the session cannot use is an
+  error for that exchange.
 - The turn list updates when the main agent finishes a turn.
 
 ## Sending down
@@ -219,8 +246,9 @@ and bottom border.
     last aside closed. A prompt sent before the summary arrives goes without it, and the summary
     is queued for the next turn.
   - **Aside N**: aside N−1 shows "Summarizing aside N…", its usage counts the summary, and it takes
-    no question and sends nothing down until the summary arrives, so its next question and its own
-    handoff always include it. `esc` there stops the summary.
+    nothing down until the summary arrives, and questions typed there meanwhile are queued and go
+    once it arrives, so its next question and its own handoff always include it. `esc` there
+    stops the summary.
   - A summary that fails or is stopped sends the whole thread instead, with a warning naming why.
   - Nothing arrives when the level below closes first or pi quits or switches sessions. The changes
     still do: the level below takes them over as the aside closes.
@@ -289,14 +317,14 @@ Follows the window shape and updates live on resize.
   factory pi's main editor is built with, read when the box is created, so editor extensions (modal
   editing, persistent history, …) apply to it as to pi's editor; it is wired as pi wires a custom
   editor: submit and change, border colour, padding, autocomplete, and, for editors built on pi's
-  editor, esc, pi's exit key, and the expand and thinking actions, where an extension's own esc and
-  exit handlers win, as in pi. An editor extension can therefore take esc or the exit key first
+  editor, esc, pi's exit key, and the expand, thinking, follow-up, and dequeue actions, where an
+  extension's own esc and exit handlers win, as in pi. An editor extension can therefore take esc or the exit key first
   (e.g. esc leaving an insert mode) before the aside acts on it. If the factory or the editor it
   built throws, the box falls back to pi's own editor, keeping the text. pi's editor handles esc,
-  pi's exit key, the expand and thinking toggles, and enter, and the aside acts on them as listed
-  under Keys. pi's other app keys (model cycling, image paste, extension shortcuts) do nothing in an
-  aside. Enter does nothing while an answer, check, or nested aside's summary is streaming; text that is not asked
-  (a command kept with a notice) goes back into the box.
+  pi's exit key, the expand and thinking toggles, the follow-up and dequeue keys, and enter, and
+  the aside acts on them as listed under Keys. pi's other app keys (model cycling, image paste,
+  extension shortcuts) do nothing in an aside. Text that is not asked or queued (a command kept
+  with a notice) goes back into the box.
 - Completion is pi's: `tab` completes paths (a list when several match), `@` searches files, and
   other extensions' completions work, all from pi's editor provider. The list shows under the text
   in at most half of the rows left, with pi's `autocompleteMaxVisible` rows. Slash commands
@@ -327,7 +355,8 @@ in, `esc` closes the list. pi commands that cannot run in an aside say so in the
 - **`/model [name]`**: model for this aside only; a partial name works if it matches one.
 - **`/thinking [level]`**: thinking level for this aside only, only levels the model supports.
 - **`/aside`**: opens a nested aside. **`/aside summary`**, **`/aside send`**, **`/aside close`**: the
-  same as `ctrl+s`, `ctrl+shift+s`, and pi's exit key on an empty box. Any other argument stays in
+  same as `ctrl+s`, `ctrl+shift+s`, and pi's exit key on an empty box; while the aside is busy,
+  `summary` and `send` stay in the box with a notice, as their keys do nothing then. Any other argument stays in
   the box with a notice listing the verbs. Typing `/aside ` lists the verbs.
 - **pi commands** (built-ins and extension commands) cannot run in an aside: the command goes into
   pi's editor if it is empty, with a notice to close the asides and press Enter; otherwise it stays
@@ -364,8 +393,10 @@ Only where pi enables it (fullscreen mode, the default).
   summarizing and sending the whole thread at both levels, stacking and closing, both layouts at
   depth 1 and 2 with live resize,
   a very short pane, every new-line key, each kind of slash command, clicks on collapsed levels,
-  an aside that edits a file and runs a command (main agent idle and busy), and an MCP call from
-  an aside, nested included.
+  an aside that edits a file and runs a command (main agent idle and busy), an MCP call from
+  an aside, nested included, and queued questions: steers and follow-ups typed while an answer
+  runs, during the command check, and while a nested aside's summary is on its way, then put back
+  with pi's dequeue key and with `esc`.
 - `shift+enter`, `shift+↑`, `ctrl+j`, and `alt+…` are encoded differently inside and outside tmux.
 
 ## Non-goals
@@ -380,7 +411,14 @@ Only where pi enables it (fullscreen mode, the default).
 ## Platform notes
 
 Facts about pi, checked against **pi 1.3.0**; built-in command names, template argument
-substitution, tool info, tool events, the tool component, and session tool selection against **pi 1.5.0**. Hints, not requirements; re-check on upgrade.
+substitution, tool info, tool events, the tool component, and session tool selection against **pi 1.5.0**; session message queues against **pi 1.5.2**. Hints, not requirements; re-check on upgrade.
+
+- A session queues steering and follow-ups while it streams (a run starts streaming before its
+  first event). Steering is taken after the current tool calls, and at the start of a run; it
+  arrives as a user message whose text is the queued text (after extensions' input hooks), which
+  the session removes from its queue by that text. A run goes on while anything is queued, after
+  an error too; only an abort ends it with messages left. pi's interactive mode holds prompts typed
+  during compaction itself and sends them when compaction ends, the first as a prompt.
 
 - Overlays: pi keeps an overlay's options object and re-reads its fields every render, so computed
   fields let one overlay change size and position live. Not a documented contract; the documented

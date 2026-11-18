@@ -17,18 +17,25 @@ export interface RanCommand {
 	isError?: boolean;
 }
 
-/** The questions of the level, the answer, and the commands, as the check's input. */
-function checkInput(level: AsideLevel, ex: Exchange, commands: RanCommand[]): string {
-	const earlier = level.thread.filter((e) => !e.from && e !== ex).map((e) => `- ${e.question}`);
+/**
+ * The level's earlier questions, the answer's questions (the one asked, then each steer it took)
+ * with the answer, and the commands, as the check's input.
+ */
+function checkInput(level: AsideLevel, run: Exchange[], commands: RanCommand[]): string {
+	const earlier = level.thread.filter((e) => !e.from && !run.includes(e)).map((e) => `- ${e.question}`);
 	const listed = commands.map((c, i) => {
 		const status = c.output === undefined ? "did not finish" : c.isError ? "failed" : "succeeded";
 		const output = c.output?.trim() ? `\nOutput:\n${clip(c.output.trim(), COMMAND_CHECK_OUTPUT_MAX_CHARS)}` : "";
 		return `<command n="${i + 1}" status="${status}">\n${clip(c.command, COMMAND_CHECK_COMMAND_MAX_CHARS)}${output}\n</command>`;
 	});
+	const answer = run
+		.map((e) => answerText(e).trim())
+		.filter(Boolean)
+		.join("\n\n");
 	return [
 		earlier.length ? `<earlier_questions>\n${earlier.join("\n")}\n</earlier_questions>` : "",
-		`<question>\n${ex.question}\n</question>`,
-		`<answer>\n${clip(answerText(ex).trim(), COMMAND_CHECK_ANSWER_MAX_CHARS)}\n</answer>`,
+		`<question>\n${run.map((e) => e.question).join("\n\n")}\n</question>`,
+		`<answer>\n${clip(answer, COMMAND_CHECK_ANSWER_MAX_CHARS)}\n</answer>`,
 		`<commands>\n${listed.join("\n")}\n</commands>`,
 	]
 		.filter(Boolean)
@@ -52,13 +59,13 @@ function verdictChanges(text: string, commands: RanCommand[]): Change[] {
 /** Without a verdict (stopped or failed), every command is listed, as it may have changed anything. */
 export const unchecked = (commands: RanCommand[]): Change[] => commands.map((c) => local(`ran \`${clip(c.command, 500)}\` (not checked)`));
 
-/** The changes `commands`, run while answering `ex`, made at the user's request. */
-export async function commandChanges(env: AsideEnv, level: AsideLevel, ex: Exchange, commands: RanCommand[], signal: AbortSignal): Promise<Change[]> {
+/** The changes `commands`, run during the answer to the exchanges of `run`, made at the user's request. */
+export async function commandChanges(env: AsideEnv, level: AsideLevel, run: Exchange[], commands: RanCommand[], signal: AbortSignal): Promise<Change[]> {
 	try {
 		const response = await env.ctx.modelRegistry
 			.streamSimple(
 				level.model,
-				{ systemPrompt: commandCheckPrompt(), messages: [{ role: "user", content: checkInput(level, ex, commands), timestamp: Date.now() }] },
+				{ systemPrompt: commandCheckPrompt(), messages: [{ role: "user", content: checkInput(level, run, commands), timestamp: Date.now() }] },
 				{ signal },
 			)
 			.result();

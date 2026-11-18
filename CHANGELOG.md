@@ -2,6 +2,9 @@
 
 ## [Unreleased]
 
+- Type while an aside answers, as in pi's editor: `enter` steers the answer, `alt+enter` queues a
+  follow-up for when it is done, and `alt+up` (or `esc`) puts queued messages back to edit.
+
 - Asides can use MCP servers and codemode again; they had none of the main agent's MCP tools.
 - Dragging the mouse selects text with asides stacked, as with one aside.
 

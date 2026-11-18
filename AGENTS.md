@@ -69,6 +69,12 @@ point, each told to read this file first and to edit nothing.
   APPEND_SYSTEM.md). No `tools` option: it is an allowlist fixed for the session's life (tools
   outside it never register); the active tools are set by name from `pi.getActiveTools()` before
   each question.
+- Queued questions (`src/agent/ask.ts`): a steer goes in with `session.steer()` once the answer's
+  run started (`agent_start`; `isStreaming`). The session delivers it as a user `message_start`
+  whose text is the queued text, which starts its exchange; the first user message of a run is the
+  question. A run goes on while anything is queued, so leftovers (an abort, a run that ended while
+  a steer was on its way in) are taken back with `clearQueue()` when it ends. Follow-ups never go
+  into the session: they are asked as the next question (see `SPEC.md`).
 - `session.dispose()` emits no `session_shutdown`; `closeSession` runs each extension's shutdown
   handlers concurrently under a time limit, then disposes, so no extension's timers outlive it.
 
@@ -81,7 +87,7 @@ point, each told to read this file first and to edit nothing.
 - `src/commands.ts`: slash commands in the question box, and its autocomplete (pi's, with them)
 - `src/agent/`: answering through an in-memory pi session
   - `session.ts`: creating and closing the session, applying the model
-  - `ask.ts`: asking a question
+  - `ask.ts`: asking a question, and questions queued while a level is busy
   - `handoff.ts`: handing a thread to the level below, summarized or whole
   - `env.ts`: what those need from the stack, and messages to the main conversation
   - `changes.ts`: tool-call lines and what calls changed

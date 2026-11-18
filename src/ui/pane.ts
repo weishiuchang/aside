@@ -18,14 +18,28 @@ import {
 import { LIST_MAX_ROWS, MAX_DEPTH, MAX_INPUT_ROWS, OPEN_KEYS, SUMMARY_KEY, THREAD_KEY, THREAD_WINDOW } from "../config.ts";
 import { type Part, rangeLabel, sentDownText } from "../context/parts.ts";
 import { clip, plural } from "../context/text.ts";
-import { type AsideLevel, answerVersion, handoffTitle, isBusy, type SentDown, selectedRange, stopStreaming, syncSelection } from "../level.ts";
+import {
+	type AsideLevel,
+	answerVersion,
+	handoffTitle,
+	isBusy,
+	type Queued,
+	type SentDown,
+	selectedRange,
+	stopStreaming,
+	syncSelection,
+	takeQueue,
+} from "../level.ts";
 import { anchorRow, lineAnchor } from "./anchor.ts";
 import { type EditorFactory, QuestionBox } from "./question-box.ts";
 import type { ToolCall } from "./tool-call.ts";
 
 export interface PaneActions {
-	/** Ask a question or run a slash command. Returns false to keep the text in the box. */
-	submit: (text: string) => boolean;
+	/**
+	 * Ask a question or run a slash command; while the aside is busy a question is queued as `mode`.
+	 * Returns false to keep the text in the box.
+	 */
+	submit: (text: string, mode: Queued["mode"]) => boolean;
 	/** pi's editor autocomplete with the aside's commands. */
 	autocomplete: AutocompleteProvider;
 	/** Rows of the autocomplete list, pi's setting. */
@@ -156,11 +170,17 @@ export class AsidePane implements Component, Focusable {
 			actions.autocomplete,
 			actions.autocompleteMaxVisible,
 			{
-				submit: (text) => this.submit(text),
+				submit: (text) => this.submit(text, "steer"),
+				followUp: (text) => this.submit(text, "followUp"),
+				dequeue: () => this.dequeue(),
 				change: (text) => {
 					level.draft = text;
 				},
-				escape: () => stopStreaming(level),
+				// As pi's interrupt key: queued questions go back into the box, then everything stops.
+				escape: () => {
+					this.restoreQueue();
+					stopStreaming(level);
+				},
 				// It closes at once, stopping whatever is streaming: the user no longer wants its result.
 				exit: () => actions.close(),
 				toggleExpanded: () => actions.toggleExpanded(),
@@ -215,12 +235,32 @@ export class AsidePane implements Component, Focusable {
 		this.tui.requestRender();
 	}
 
-	/** Enter in the box, which has already cleared it. Text that was not asked goes back. */
-	private submit(text: string) {
+	/** Enter or pi's follow-up key in the box, which has already cleared it. Text that was not asked goes back. */
+	private submit(text: string, mode: Queued["mode"]) {
 		const q = text.trim();
 		if (!q) return;
 		this.input.addToHistory(q);
-		if (!this.actions.submit(q)) this.setInput(text);
+		if (!this.actions.submit(q, mode)) this.setInput(text);
+		this.tui.requestRender();
+	}
+
+	/**
+	 * Put every queued question back into the box, before what it holds, as pi's main pane puts
+	 * queued messages back into its editor. Returns how many there were.
+	 */
+	private restoreQueue(): number {
+		const queued = takeQueue(this.level);
+		if (!queued.length) return 0;
+		this.setInput([queued.join("\n\n"), this.input.getValue()].filter((t) => t.trim()).join("\n\n"));
+		return queued.length;
+	}
+
+	/** pi's dequeue key, with pi's notices. */
+	private dequeue() {
+		const restored = this.restoreQueue();
+		this.level.notice = restored
+			? `Restored ${restored} queued message${restored > 1 ? "s" : ""} to editor`
+			: "No queued messages to restore";
 		this.tui.requestRender();
 	}
 
@@ -254,7 +294,6 @@ export class AsidePane implements Component, Focusable {
 			if (matchesKey(data, "pageUp")) return this.scrollThread(-page);
 			if (matchesKey(data, "pageDown")) return this.scrollThread(page);
 		}
-		this.input.submitDisabled = isBusy(level);
 		this.input.handleInput(data);
 		this.tui.requestRender();
 	}
@@ -334,7 +373,7 @@ export class AsidePane implements Component, Focusable {
 						if (text) sections.push({ text, thinking: s.kind === "thinking", answer: true });
 					}
 					const status: string[] = [];
-					if (sections.length === 1 && !ex.error && !ex.aborted) status.push("_…_");
+					if (sections.length === 1 && !ex.done && !ex.error && !ex.aborted) status.push("_…_");
 					if (ex.aborted) status.push("_(stopped)_");
 					if (ex.error) status.push(`**Error:** ${ex.error}`);
 					if (status.length) sections.push({ text: status.join("\n\n") });
@@ -556,6 +595,22 @@ export class AsidePane implements Component, Focusable {
 
 	// ── Render ─────────────────────────────────────────────────────────────────
 
+	/**
+	 * Queued questions, shown above the box as pi's main pane lists queued messages above its editor:
+	 * steers, then follow-ups, each on one row, then the key that puts them back (in the top aside).
+	 */
+	private queuedLines(): string[] {
+		const queue = this.level.queue;
+		if (!queue.length) return [];
+		const dim = (t: string) => this.theme.fg("dim", t);
+		const line = (label: string) => (q: Queued) => dim(`${label}: ${q.question.text.split("\n", 1)[0]}`);
+		return [
+			...queue.filter((q) => q.mode === "steer").map(line("Steering")),
+			...queue.filter((q) => q.mode === "followUp").map(line("Follow-up")),
+			...(this.isTop ? [dim(`↳ ${keyText("app.message.dequeue")} to edit all queued messages`)] : []),
+		];
+	}
+
 	/** Hints for aside-specific keys only, wrapped to at most two lines. */
 	private hintLines(inner: number): string[] {
 		const th = this.theme;
@@ -668,13 +723,15 @@ export class AsidePane implements Component, Focusable {
 		// The autocomplete list goes under the text, as in pi, in at most half the rows left.
 		const list = box.list.slice(0, Math.max(0, Math.floor((H - lines.length - text.length - hints.length - 4) / 2)));
 		const inputRows = [...text, ...list];
-		// Header rule, input rule, input and list, hints, bottom border.
-		const fixed = lines.length + 1 + 1 + inputRows.length + hints.length + 1;
+		const queued = this.queuedLines();
+		// Header rule, queued questions, input rule, input and list, hints, bottom border.
+		const fixed = lines.length + 1 + queued.length + 1 + inputRows.length + hints.length + 1;
 		const T = Math.max(1, H - fixed);
 		this.threadHeight = T;
 		const { body, note } = this.windowedThread(inner, T, parts);
 		lines.push(rule("├", header, "┤", note ? th.fg("dim", note) : ""));
 		for (let r = 0; r < T; r++) lines.push(row(body[level.scroll + r] ?? ""));
+		for (const q of queued) lines.push(row(q));
 
 		lines.push(rule("├", "", "┤"));
 		for (const r of inputRows) lines.push(row(r));

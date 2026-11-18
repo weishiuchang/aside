@@ -16,7 +16,7 @@ import { dirname } from "node:path";
 import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { type ExtensionAPI, type ExtensionContext, parseFrontmatter, stripFrontmatter } from "@earendil-works/pi-coding-agent";
 import { type AutocompleteItem, type AutocompleteProvider, CombinedAutocompleteProvider, fuzzyFilter, type SlashCommand } from "@earendil-works/pi-tui";
-import { type AsideLevel, levelThinking } from "./level.ts";
+import { type AsideLevel, isBusy, levelThinking } from "./level.ts";
 import type { Model, ThinkingLevel } from "./types.ts";
 
 /**
@@ -186,6 +186,10 @@ function asideCommand(host: CommandHost, args: string): CommandResult {
 		close: host.close,
 	};
 	if (!(args in actions)) return { kind: "keep", notice: `Unknown /aside verb "${args}". Use /aside, or /aside ${ASIDE_VERB_NAMES.join(", ")}.` };
+	// As their keys: nothing goes down while something streams here.
+	if ((args === "summary" || args === "send") && isBusy(host.level)) {
+		return { kind: "keep", notice: `/aside ${args} waits until nothing streams in this aside; esc stops it.` };
+	}
 	actions[args as AsideVerb | ""]();
 	return { kind: "done" };
 }
